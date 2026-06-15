@@ -60,6 +60,7 @@ class Meeting(BaseModel):
     id: str
     topic: str
     mode: str = "pipeline"  # pipeline | roundtable
+    max_rounds: int = 1  # 圆桌讨论轮数
     created_at: str
     participants: List[Participant]
     messages: List[ChatMessage]
@@ -139,7 +140,7 @@ def now() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
-def create_meeting(topic: str, mode: str = "pipeline") -> Meeting:
+def create_meeting(topic: str, mode: str = "pipeline", max_rounds: int = 1) -> Meeting:
     meeting_id = str(uuid.uuid4())[:8]
 
     participants = [
@@ -154,12 +155,13 @@ def create_meeting(topic: str, mode: str = "pipeline") -> Meeting:
     if mode == "roundtable":
         participants.insert(1, Participant(id="moderator", name="Moderator", role="agent", avatar="🎤"))
 
-    mode_text = "流水线模式" if mode == "pipeline" else "圆桌讨论模式"
+    mode_text = "流水线模式" if mode == "pipeline" else f"圆桌讨论模式（{max_rounds} 轮）"
 
     meeting = Meeting(
         id=meeting_id,
         topic=topic,
         mode=mode,
+        max_rounds=max_rounds,
         created_at=now(),
         participants=participants,
         messages=[
@@ -324,35 +326,27 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
         yield sse_event("system", {"meeting_id": meeting_id, "content": f"=== 第 {round_num} 轮讨论 ==="})
 
         for agent_key in discussion_agents:
-            context = build_meeting_context(meeting_id)
+            context = build_meeting_context(meeting_id, max_chars_per_msg=1200)
 
             # 第一轮保底：Research 和 Writing 必须发言，确保讨论有基础内容
             is_first_round = round_num == 1
             force_speak = is_first_round and agent_key in ["research", "writing"]
 
-            if not force_speak:
-                # Moderator 决定这个 agent 是否该发言
-                moderator_decision_prompt = (
-                    f"你是主持人。会议主题：{topic}。\n\n"
-                    f"当前讨论上下文：\n{context}\n\n"
-                    f"现在请决定：是否邀请 {AGENTS[agent_key]['name']} 发言？"
-                    f"如果应该让 ta 发言就回复 yes，如果跳过就回复 no。只输出 yes 或 no。"
-                )
-                decision = await call_agent("moderator", moderator_decision_prompt, max_tokens=50)
-                decision_clean = decision.strip().lower().split()[0] if decision.strip() else "no"
-
-                if decision_clean != "yes":
-                    continue
-
-            # agent 自己决定是否回应 + 直接发言（合并为一次调用）
+            # agent 自我判断是否发言：有观点直接说，无话则 PASS（一次 LLM 调用）
             agent_prompt = (
                 f"你是 {AGENTS[agent_key]['name']}。会议主题：{topic}。\n\n"
                 f"当前讨论上下文：\n{context}\n\n"
-                f"主持人邀请你发言。请你判断是否有新的观点或补充。"
-                f"如果有，请直接发表观点；如果确实没有新内容，请只回复 PASS。"
-                f"不要重复之前已经说过的内容。"
             )
-            response = await call_agent(agent_key, agent_prompt)
+            if force_speak:
+                agent_prompt += "本轮请你必须发言，请结合主题和上下文发表观点，不要重复已有内容。"
+            else:
+                agent_prompt += (
+                    "主持人邀请你发言。请你判断是否有新的观点或补充。"
+                    "如果有，请直接发表观点；如果确实没有新内容，请只回复 PASS。"
+                    "不要重复之前已经说过的内容。"
+                )
+            # 圆桌模式下限制单次发言长度，降低 LLM 耗时和上下文膨胀
+            response = await call_agent(agent_key, agent_prompt, max_tokens=1200)
 
             if response.strip().upper().startswith("PASS"):
                 continue
@@ -374,12 +368,12 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
     # 保底：如果没有任何 agent 发过言，强制 Research 发言
     has_agent_spoken = any(m.participant_id in discussion_agents for m in meetings[meeting_id].messages)
     if not has_agent_spoken:
-        context = build_meeting_context(meeting_id)
+        context = build_meeting_context(meeting_id, max_chars_per_msg=1200)
         async for event in run_agent_step(meeting_id, "research", f"请研究这个主题：{topic}", context):
             yield event
 
     # Moderator 总结
-    context = build_meeting_context(meeting_id)
+    context = build_meeting_context(meeting_id, max_chars_per_msg=1200)
     closing_prompt = (
         f"你是主持人。会议主题：{topic}。\n\n"
         f"当前讨论上下文：\n{context}\n\n"
@@ -408,11 +402,13 @@ async def get_meeting(meeting_id: str):
 class CreateMeetingRequest(BaseModel):
     topic: str
     mode: str = "pipeline"  # pipeline | roundtable
+    max_rounds: int = 1  # 仅圆桌模式生效，范围 1-10
 
 
 @app.post("/api/meetings")
 async def create_meeting_api(req: CreateMeetingRequest):
-    meeting = create_meeting(req.topic, mode=req.mode)
+    max_rounds = max(1, min(10, req.max_rounds)) if req.mode == "roundtable" else 1
+    meeting = create_meeting(req.topic, mode=req.mode, max_rounds=max_rounds)
     return meeting.model_dump()
 
 
@@ -443,7 +439,7 @@ async def meeting_events(meeting_id: str):
         # 如果是新会议且只有系统消息，自动运行对应模式流程
         if len(meeting.messages) == 1:
             if meeting.mode == "roundtable":
-                async for event in run_roundtable_flow(meeting_id, meeting.topic):
+                async for event in run_roundtable_flow(meeting_id, meeting.topic, max_rounds=meeting.max_rounds):
                     yield event
             else:
                 async for event in run_meeting_flow(meeting_id, meeting.topic):
@@ -478,7 +474,7 @@ async def run_agents(meeting_id: str):
 
     async def event_stream():
         if meeting.mode == "roundtable":
-            async for event in run_roundtable_flow(meeting_id, topic):
+            async for event in run_roundtable_flow(meeting_id, topic, max_rounds=meeting.max_rounds):
                 yield event
         else:
             async for event in run_meeting_flow(meeting_id, topic):
