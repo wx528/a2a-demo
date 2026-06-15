@@ -35,6 +35,7 @@
         function App() {
             const [meeting, setMeeting] = useState(null);
             const [topic, setTopic] = useState("");
+            const [mode, setMode] = useState("pipeline");
             const [input, setInput] = useState("");
             const [connected, setConnected] = useState(false);
             const messagesEndRef = useRef(null);
@@ -44,7 +45,7 @@
                 const res = await fetch("/api/meetings", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ topic }),
+                    body: JSON.stringify({ topic, mode }),
                 });
                 const data = await res.json();
                 setMeeting(data);
@@ -187,7 +188,7 @@
                             <div className="text-4xl mb-4 text-center">🤖</div>
                             <h1 className="text-2xl font-bold text-center mb-2">A2A 多人会议室</h1>
                             <p className="text-gray-500 text-center mb-6">
-                                创建一个主题，邀请 Research Agent 和 Writing Agent 一起讨论
+                                创建一个主题，邀请多个 Agent 一起讨论
                             </p>
                             <input
                                 type="text"
@@ -197,6 +198,17 @@
                                 placeholder="输入会议主题，例如：A2A protocol"
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                             />
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">会议模式</label>
+                                <select
+                                    value={mode}
+                                    onChange={(e) => setMode(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="pipeline">流水线模式（依次发言）</option>
+                                    <option value="roundtable">圆桌讨论模式（Moderator 主持）</option>
+                                </select>
+                            </div>
                             <button
                                 onClick={createMeeting}
                                 className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium"
@@ -215,7 +227,12 @@
                         <div className="max-w-5xl mx-auto flex items-center justify-between">
                             <div>
                                 <h1 className="text-xl font-bold">🤖 A2A 多人会议室</h1>
-                                <p className="text-sm text-gray-500">主题：{meeting.topic}</p>
+                                <p className="text-sm text-gray-500">
+                                    主题：{meeting.topic}
+                                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                        {meeting.mode === 'roundtable' ? '圆桌讨论' : '流水线'}
+                                    </span>
+                                </p>
                             </div>
                             <div className="flex items-center gap-2 text-sm">
                                 <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>

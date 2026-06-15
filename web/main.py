@@ -59,6 +59,7 @@ class ChatMessage(BaseModel):
 class Meeting(BaseModel):
     id: str
     topic: str
+    mode: str = "pipeline"  # pipeline | roundtable
     created_at: str
     participants: List[Participant]
     messages: List[ChatMessage]
@@ -70,6 +71,15 @@ class Meeting(BaseModel):
 meetings: Dict[str, Meeting] = {}
 
 AGENTS = {
+    "moderator": {
+        "name": "Moderator",
+        "url": RESEARCH_AGENT_URL,
+        "avatar": "🎤",
+        "system_prompt": (
+            "你是一场技术讨论会的主持人。你需要控制会议节奏，决定谁下一个发言。"
+            "回答必须简洁，只给出决定或简短说明，不要长篇大论。"
+        ),
+    },
     "research": {
         "name": "Research Agent",
         "url": RESEARCH_AGENT_URL,
@@ -129,20 +139,29 @@ def now() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
-def create_meeting(topic: str) -> Meeting:
+def create_meeting(topic: str, mode: str = "pipeline") -> Meeting:
     meeting_id = str(uuid.uuid4())[:8]
+
+    participants = [
+        Participant(id="user", name="你", role="user", avatar="👤"),
+        Participant(id="research", name="Research Agent", role="agent", avatar="🔬"),
+        Participant(id="writing", name="Writing Agent", role="agent", avatar="✍️"),
+        Participant(id="review", name="Review Agent", role="agent", avatar="🧐"),
+        Participant(id="code", name="Code Agent", role="agent", avatar="💻"),
+        Participant(id="summary", name="Summary Agent", role="agent", avatar="📝"),
+    ]
+
+    if mode == "roundtable":
+        participants.insert(1, Participant(id="moderator", name="Moderator", role="agent", avatar="🎤"))
+
+    mode_text = "流水线模式" if mode == "pipeline" else "圆桌讨论模式"
+
     meeting = Meeting(
         id=meeting_id,
         topic=topic,
+        mode=mode,
         created_at=now(),
-        participants=[
-            Participant(id="user", name="你", role="user", avatar="👤"),
-            Participant(id="research", name="Research Agent", role="agent", avatar="🔬"),
-            Participant(id="writing", name="Writing Agent", role="agent", avatar="✍️"),
-            Participant(id="review", name="Review Agent", role="agent", avatar="🧐"),
-            Participant(id="code", name="Code Agent", role="agent", avatar="💻"),
-            Participant(id="summary", name="Summary Agent", role="agent", avatar="📝"),
-        ],
+        participants=participants,
         messages=[
             ChatMessage(
                 id=str(uuid.uuid4()),
@@ -150,7 +169,7 @@ def create_meeting(topic: str) -> Meeting:
                 participant_id="system",
                 participant_name="系统",
                 role="system",
-                content=f"会议室已创建，主题：{topic}",
+                content=f"会议室已创建，主题：{topic}，模式：{mode_text}",
                 timestamp=now(),
                 type="system",
             )
@@ -193,11 +212,15 @@ def sse_event(event: str, data: dict) -> str:
 
 # ============== Agent 调用 ==============
 
-async def call_agent(agent_key: str, input_text: str) -> str:
+async def call_agent(agent_key: str, input_text: str, max_tokens: int = None) -> str:
     """直接调用 agent 的 LLM，不走 HTTP（减少一次网络跳转）"""
     agent = AGENTS[agent_key]
-    max_tokens = {"writing": 4000, "summary": 2000, "review": 2000}.get(agent_key, 1500)
-    result = call_llm(agent["system_prompt"], input_text, max_tokens=max_tokens)
+    default_max_tokens = {"writing": 4000, "summary": 2000, "review": 2000}.get(agent_key, 1500)
+    result = call_llm(
+        agent["system_prompt"],
+        input_text,
+        max_tokens=max_tokens or default_max_tokens,
+    )
     if result:
         cleaned = result.split("</think>")[-1].strip()
         return cleaned
@@ -284,6 +307,90 @@ async def run_meeting_flow(meeting_id: str, topic: str):
     yield sse_event("system", {"meeting_id": meeting_id, "content": "会议流程结束，你可以继续提问。"})
 
 
+async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
+    """真实圆桌讨论模式
+    - Moderator 控制发言顺序
+    - 每个 agent 可以决定是否回应（说 PASS 跳过）
+    - 优化：agent 自我决策和正式发言合并为一次 LLM 调用
+    """
+    discussion_agents = ["research", "writing", "review", "code", "summary"]
+
+    # Moderator 开场
+    opening = f"欢迎来到圆桌讨论会。今天我们要讨论的主题是：{topic}。请各位专家结合上下文发表观点，如果暂时无话可补充可以说 PASS。"
+    async for event in run_agent_step(meeting_id, "moderator", opening):
+        yield event
+
+    for round_num in range(1, max_rounds + 1):
+        yield sse_event("system", {"meeting_id": meeting_id, "content": f"=== 第 {round_num} 轮讨论 ==="})
+
+        for agent_key in discussion_agents:
+            context = build_meeting_context(meeting_id)
+
+            # 第一轮保底：Research 和 Writing 必须发言，确保讨论有基础内容
+            is_first_round = round_num == 1
+            force_speak = is_first_round and agent_key in ["research", "writing"]
+
+            if not force_speak:
+                # Moderator 决定这个 agent 是否该发言
+                moderator_decision_prompt = (
+                    f"你是主持人。会议主题：{topic}。\n\n"
+                    f"当前讨论上下文：\n{context}\n\n"
+                    f"现在请决定：是否邀请 {AGENTS[agent_key]['name']} 发言？"
+                    f"如果应该让 ta 发言就回复 yes，如果跳过就回复 no。只输出 yes 或 no。"
+                )
+                decision = await call_agent("moderator", moderator_decision_prompt, max_tokens=50)
+                decision_clean = decision.strip().lower().split()[0] if decision.strip() else "no"
+
+                if decision_clean != "yes":
+                    continue
+
+            # agent 自己决定是否回应 + 直接发言（合并为一次调用）
+            agent_prompt = (
+                f"你是 {AGENTS[agent_key]['name']}。会议主题：{topic}。\n\n"
+                f"当前讨论上下文：\n{context}\n\n"
+                f"主持人邀请你发言。请你判断是否有新的观点或补充。"
+                f"如果有，请直接发表观点；如果确实没有新内容，请只回复 PASS。"
+                f"不要重复之前已经说过的内容。"
+            )
+            response = await call_agent(agent_key, agent_prompt)
+
+            if response.strip().upper().startswith("PASS"):
+                continue
+
+            # 直接添加 agent 发言消息（不再调用一次 LLM）
+            update_participant_status(meeting_id, agent_key, "thinking")
+            yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "thinking"})
+            await asyncio.sleep(0.3)
+
+            update_participant_status(meeting_id, agent_key, "speaking")
+            yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "speaking"})
+
+            msg = add_message(meeting_id, agent_key, response)
+            yield sse_event("message", msg.model_dump())
+
+            update_participant_status(meeting_id, agent_key, "idle")
+            yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "idle"})
+
+    # 保底：如果没有任何 agent 发过言，强制 Research 发言
+    has_agent_spoken = any(m.participant_id in discussion_agents for m in meetings[meeting_id].messages)
+    if not has_agent_spoken:
+        context = build_meeting_context(meeting_id)
+        async for event in run_agent_step(meeting_id, "research", f"请研究这个主题：{topic}", context):
+            yield event
+
+    # Moderator 总结
+    context = build_meeting_context(meeting_id)
+    closing_prompt = (
+        f"你是主持人。会议主题：{topic}。\n\n"
+        f"当前讨论上下文：\n{context}\n\n"
+        f"请对本次圆桌讨论做简短总结。"
+    )
+    async for event in run_agent_step(meeting_id, "moderator", closing_prompt):
+        yield event
+
+    yield sse_event("system", {"meeting_id": meeting_id, "content": "圆桌会议结束。"})
+
+
 # ============== API 路由 ==============
 
 @app.get("/")
@@ -300,11 +407,12 @@ async def get_meeting(meeting_id: str):
 
 class CreateMeetingRequest(BaseModel):
     topic: str
+    mode: str = "pipeline"  # pipeline | roundtable
 
 
 @app.post("/api/meetings")
 async def create_meeting_api(req: CreateMeetingRequest):
-    meeting = create_meeting(req.topic)
+    meeting = create_meeting(req.topic, mode=req.mode)
     return meeting.model_dump()
 
 
@@ -332,10 +440,14 @@ async def meeting_events(meeting_id: str):
         meeting = meetings[meeting_id]
         yield sse_event("init", meeting.model_dump())
 
-        # 如果是新会议且只有系统消息，自动运行默认流程
+        # 如果是新会议且只有系统消息，自动运行对应模式流程
         if len(meeting.messages) == 1:
-            async for event in run_meeting_flow(meeting_id, meeting.topic):
-                yield event
+            if meeting.mode == "roundtable":
+                async for event in run_roundtable_flow(meeting_id, meeting.topic):
+                    yield event
+            else:
+                async for event in run_meeting_flow(meeting_id, meeting.topic):
+                    yield event
 
         # 保持连接，后续用户发送消息时也可以推送
         while meeting.status == "active":
@@ -365,8 +477,12 @@ async def run_agents(meeting_id: str):
     topic = last_user_msg.content if last_user_msg else meeting.topic
 
     async def event_stream():
-        async for event in run_meeting_flow(meeting_id, topic):
-            yield event
+        if meeting.mode == "roundtable":
+            async for event in run_roundtable_flow(meeting_id, topic):
+                yield event
+        else:
+            async for event in run_meeting_flow(meeting_id, topic):
+                yield event
 
     return StreamingResponse(
         event_stream(),
