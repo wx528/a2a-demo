@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A2A 多人会议室</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .thinking-dot {
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+        .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        .markdown-body h1 { font-size: 1.5rem; font-weight: bold; margin: 1rem 0 0.5rem; }
+        .markdown-body h2 { font-size: 1.25rem; font-weight: bold; margin: 0.875rem 0 0.5rem; }
+        .markdown-body p { margin: 0.5rem 0; line-height: 1.6; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+        .markdown-body code { background: #f3f4f6; padding: 0.125rem 0.25rem; border-radius: 0.25rem; }
+        .markdown-body pre { background: #f3f4f6; padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function App() {
+            const [meeting, setMeeting] = useState(null);
+            const [topic, setTopic] = useState("");
+            const [input, setInput] = useState("");
+            const [connected, setConnected] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const createMeeting = async () => {
+                if (!topic.trim()) return;
+                const res = await fetch("/api/meetings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ topic }),
+                });
+                const data = await res.json();
+                setMeeting(data);
+                connectSSE(data.id);
+            };
+
+            const connectSSE = (meetingId) => {
+                const evtSource = new EventSource(`/api/meetings/${meetingId}/events`);
+
+                evtSource.addEventListener("init", (e) => {
+                    setMeeting(JSON.parse(e.data));
+                    setConnected(true);
+                });
+
+                evtSource.addEventListener("message", (e) => {
+                    const msg = JSON.parse(e.data);
+                    setMeeting(prev => ({
+                        ...prev,
+                        messages: [...prev.messages, msg],
+                    }));
+                });
+
+                evtSource.addEventListener("status", (e) => {
+                    const { participant_id, status } = JSON.parse(e.data);
+                    setMeeting(prev => ({
+                        ...prev,
+                        participants: prev.participants.map(p =>
+                            p.id === participant_id ? { ...p, status } : p
+                        ),
+                    }));
+                });
+
+                evtSource.addEventListener("system", (e) => {
+                    const { content } = JSON.parse(e.data);
+                    setMeeting(prev => ({
+                        ...prev,
+                        messages: [...prev.messages, {
+                            id: Date.now().toString(),
+                            meeting_id: prev.id,
+                            participant_id: "system",
+                            participant_name: "系统",
+                            role: "system",
+                            content,
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: "system",
+                        }],
+                    }));
+                });
+
+                evtSource.onerror = () => {
+                    setConnected(false);
+                    evtSource.close();
+                };
+            };
+
+            const sendMessage = async () => {
+                if (!input.trim() || !meeting) return;
+
+                await fetch(`/api/meetings/${meeting.id}/messages`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: input }),
+                });
+
+                setMeeting(prev => ({
+                    ...prev,
+                    messages: [...prev.messages, {
+                        id: Date.now().toString(),
+                        meeting_id: prev.id,
+                        participant_id: "user",
+                        participant_name: "你",
+                        role: "user",
+                        content: input,
+                        timestamp: new Date().toLocaleTimeString(),
+                        type: "message",
+                    }],
+                }));
+
+                setInput("");
+
+                // 触发 agent 重新运行
+                const evtSource = new EventSource(`/api/meetings/${meeting.id}/run`);
+                evtSource.addEventListener("message", (e) => {
+                    const msg = JSON.parse(e.data);
+                    setMeeting(prev => ({
+                        ...prev,
+                        messages: [...prev.messages, msg],
+                    }));
+                });
+                evtSource.addEventListener("status", (e) => {
+                    const { participant_id, status } = JSON.parse(e.data);
+                    setMeeting(prev => ({
+                        ...prev,
+                        participants: prev.participants.map(p =>
+                            p.id === participant_id ? { ...p, status } : p
+                        ),
+                    }));
+                });
+                evtSource.addEventListener("system", (e) => {
+                    const { content } = JSON.parse(e.data);
+                    setMeeting(prev => ({
+                        ...prev,
+                        messages: [...prev.messages, {
+                            id: Date.now().toString(),
+                            meeting_id: prev.id,
+                            participant_id: "system",
+                            participant_name: "系统",
+                            role: "system",
+                            content,
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: "system",
+                        }],
+                    }));
+                });
+                evtSource.onerror = () => evtSource.close();
+            };
+
+            useEffect(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, [meeting?.messages]);
+
+            const renderMarkdown = (text) => {
+                // 简易 Markdown 渲染
+                let html = text
+                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(/^- (.*$)/gim, '<li>$1</li>')
+                    .replace(/\n/g, '<br>');
+                return { __html: html };
+            };
+
+            if (!meeting) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
+                            <div className="text-4xl mb-4 text-center">🤖</div>
+                            <h1 className="text-2xl font-bold text-center mb-2">A2A 多人会议室</h1>
+                            <p className="text-gray-500 text-center mb-6">
+                                创建一个主题，邀请 Research Agent 和 Writing Agent 一起讨论
+                            </p>
+                            <input
+                                type="text"
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && createMeeting()}
+                                placeholder="输入会议主题，例如：A2A protocol"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                            />
+                            <button
+                                onClick={createMeeting}
+                                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+                            >
+                                创建会议室
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    {/* 顶部栏 */}
+                    <header className="bg-white shadow-sm border-b px-6 py-4">
+                        <div className="max-w-5xl mx-auto flex items-center justify-between">
+                            <div>
+                                <h1 className="text-xl font-bold">🤖 A2A 多人会议室</h1>
+                                <p className="text-sm text-gray-500">主题：{meeting.topic}</p>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                                <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                {connected ? '实时连接中' : '已断开'}
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* 参与者状态 */}
+                    <div className="bg-gray-50 border-b px-6 py-3">
+                        <div className="max-w-5xl mx-auto flex gap-4">
+                            {meeting.participants.map(p => (
+                                <div key={p.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm">
+                                    <span className="text-xl">{p.avatar}</span>
+                                    <div>
+                                        <div className="text-sm font-medium">{p.name}</div>
+                                        <div className="text-xs text-gray-500">
+                                            {p.status === 'thinking' && (
+                                                <span className="flex items-center gap-1">
+                                                    思考中
+                                                    <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
+                                                    <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
+                                                    <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
+                                                </span>
+                                            )}
+                                            {p.status === 'speaking' && '发言中'}
+                                            {p.status === 'idle' && '等待中'}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 消息区域 */}
+                    <main className="flex-1 overflow-y-auto px-6 py-6">
+                        <div className="max-w-5xl mx-auto space-y-4">
+                            {meeting.messages.map(msg => (
+                                <div
+                                    key={msg.id}
+                                    className={`flex ${msg.participant_id === 'user' ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div className={`max-w-3xl flex gap-3 ${msg.participant_id === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        <div className="text-2xl">{msg.participant_id === 'system' ? '🔔' : meeting.participants.find(p => p.id === msg.participant_id)?.avatar || '💬'}</div>
+                                        <div className={`rounded-2xl px-5 py-3 ${
+                                            msg.participant_id === 'user'
+                                                ? 'bg-blue-600 text-white'
+                                                : msg.participant_id === 'system'
+                                                    ? 'bg-yellow-100 text-yellow-800'
+                                                    : 'bg-white shadow-sm border'
+                                        }`}>
+                                            <div className="text-xs opacity-75 mb-1">
+                                                {msg.participant_name} · {msg.timestamp}
+                                            </div>
+                                            {msg.participant_id === 'user' || msg.participant_id === 'system' ? (
+                                                <div className="whitespace-pre-wrap">{msg.content}</div>
+                                            ) : (
+                                                <div
+                                                    className="markdown-body"
+                                                    dangerouslySetInnerHTML={renderMarkdown(msg.content)}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </div>
+                    </main>
+
+                    {/* 输入框 */}
+                    <footer className="bg-white border-t px-6 py-4">
+                        <div className="max-w-5xl mx-auto flex gap-3">
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                                placeholder="继续提问或追加需求..."
+                                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button
+                                onClick={sendMessage}
+                                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+                            >
+                                发送
+                            </button>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
