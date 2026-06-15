@@ -217,7 +217,7 @@ def sse_event(event: str, data: dict) -> str:
 async def call_agent(agent_key: str, input_text: str, max_tokens: int = None) -> str:
     """直接调用 agent 的 LLM，不走 HTTP（减少一次网络跳转）"""
     agent = AGENTS[agent_key]
-    default_max_tokens = {"writing": 4000, "summary": 2000, "review": 2000}.get(agent_key, 1500)
+    default_max_tokens = {"writing": 4000, "code": 3000, "summary": 2000, "review": 2000}.get(agent_key, 1500)
     result = call_llm(
         agent["system_prompt"],
         input_text,
@@ -326,7 +326,7 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
         yield sse_event("system", {"meeting_id": meeting_id, "content": f"=== 第 {round_num} 轮讨论 ==="})
 
         for agent_key in discussion_agents:
-            context = build_meeting_context(meeting_id, max_chars_per_msg=1200)
+            context = build_meeting_context(meeting_id, max_chars_per_msg=1500)
 
             # 第一轮保底：Research 和 Writing 必须发言，确保讨论有基础内容
             is_first_round = round_num == 1
@@ -345,8 +345,7 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
                     "如果有，请直接发表观点；如果确实没有新内容，请只回复 PASS。"
                     "不要重复之前已经说过的内容。"
                 )
-            # 圆桌模式下限制单次发言长度，降低 LLM 耗时和上下文膨胀
-            response = await call_agent(agent_key, agent_prompt, max_tokens=1200)
+            response = await call_agent(agent_key, agent_prompt)
 
             if response.strip().upper().startswith("PASS"):
                 continue
@@ -368,12 +367,12 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
     # 保底：如果没有任何 agent 发过言，强制 Research 发言
     has_agent_spoken = any(m.participant_id in discussion_agents for m in meetings[meeting_id].messages)
     if not has_agent_spoken:
-        context = build_meeting_context(meeting_id, max_chars_per_msg=1200)
+        context = build_meeting_context(meeting_id, max_chars_per_msg=1500)
         async for event in run_agent_step(meeting_id, "research", f"请研究这个主题：{topic}", context):
             yield event
 
     # Moderator 总结
-    context = build_meeting_context(meeting_id, max_chars_per_msg=1200)
+    context = build_meeting_context(meeting_id, max_chars_per_msg=1500)
     closing_prompt = (
         f"你是主持人。会议主题：{topic}。\n\n"
         f"当前讨论上下文：\n{context}\n\n"
