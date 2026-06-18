@@ -13,6 +13,10 @@
             presets: [[Babel.availablePresets["react"], { runtime: "classic" }]],
         });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .thinking-dot {
@@ -29,7 +33,19 @@
         .markdown-body p { margin: 0.5rem 0; line-height: 1.6; }
         .markdown-body ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
         .markdown-body code { background: #f3f4f6; padding: 0.125rem 0.25rem; border-radius: 0.25rem; }
-        .markdown-body pre { background: #f3f4f6; padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; }
+        .markdown-body pre {
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -37,6 +53,16 @@
 
     <script type="text/babel" data-presets="react-classic">
         const { useState, useEffect, useRef } = React;
+
+        // 配置 Markdown 解析：启用 GitHub Flavored Markdown 和自动换行
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                headerIds: false,
+                mangle: false,
+            });
+        }
 
         function App() {
             const [meeting, setMeeting] = useState(null);
@@ -172,20 +198,21 @@
 
             useEffect(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                // 每次消息更新后高亮代码块
+                if (typeof hljs !== 'undefined') {
+                    hljs.highlightAll();
+                }
             }, [meeting?.messages]);
 
             const renderMarkdown = (text) => {
-                // 简易 Markdown 渲染
-                let html = text
-                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    .replace(/`([^`]+)`/g, '<code>$1</code>')
-                    .replace(/^- (.*$)/gim, '<li>$1</li>')
-                    .replace(/\n/g, '<br>');
-                return { __html: html };
+                // 使用 marked 解析 Markdown，并用 DOMPurify 做 XSS 防护
+                const rawHtml = typeof marked !== 'undefined'
+                    ? marked.parse(text)
+                    : text.replace(/\n/g, '<br>');
+                const safeHtml = typeof DOMPurify !== 'undefined'
+                    ? DOMPurify.sanitize(rawHtml)
+                    : rawHtml;
+                return { __html: safeHtml };
             };
 
             if (!meeting) {
