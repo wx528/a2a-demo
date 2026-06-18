@@ -7,10 +7,12 @@
 - `orchestrator`：编排器，串联 research → writing 两个 agent
 - `web`：会议室演示（FastAPI + React + SSE），可视化 agent 协作过程
 
-所有 agent 都实现了 A2A 协议基础接口：
-- `GET /.well-known/agent.json`：Agent Card
-- `POST /tasks/send`：发送任务
-- `GET /tasks/{task_id}`：查询任务
+所有 agent 都通过 **JSON-RPC 2.0** 暴露 A2A 协议接口：
+- `GET /.well-known/agent.json`：Agent Card（发现）
+- `POST /rpc`：JSON-RPC 入口，支持 `tasks/send`、`tasks/get`、`tasks/cancel`、`tasks/list`
+- `POST /rpc/stream`：SSE 流式入口，支持 `tasks/sendSubscribe`、`tasks/subscribe`
+
+> 本次改造重点：数据模型与 JSON-RPC 绑定对齐 [A2A v1.0 规范](https://a2a-protocol.org/latest/specification/)。Web 会议室仍使用旧接口，将在后续阶段改造。
 
 ---
 
@@ -126,7 +128,7 @@ curl -X POST http://localhost:8000/create-article \
   -d '{"topic": "kubernetes"}'
 ```
 
-### 4. 直接调用单个 Agent
+### 4. 直接调用单个 Agent（通过 Orchestrator）
 
 ```bash
 # 直接调用 research agent
@@ -138,6 +140,52 @@ curl -X POST http://localhost:8000/direct/research \
 curl -X POST http://localhost:8000/direct/writing \
   -H "Content-Type: application/json" \
   -d '{"topic": "A2A 协议的核心概念"}'
+```
+
+### 5. 直接调用 A2A JSON-RPC 端点
+
+```bash
+# research-agent: 发送任务（阻塞返回）
+curl -X POST http://localhost:8001/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tasks/send",
+    "params": {
+      "message": {
+        "messageId": "msg-001",
+        "role": "user",
+        "parts": [{"text": "kubernetes"}]
+      }
+    }
+  }'
+
+# 查询任务状态
+curl -X POST http://localhost:8001/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tasks/get",
+    "params": {"id": "TASK_ID_HERE"}
+  }'
+
+# 流式发送任务（SSE）
+curl -N -X POST http://localhost:8001/rpc/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tasks/sendSubscribe",
+    "params": {
+      "message": {
+        "messageId": "msg-002",
+        "role": "user",
+        "parts": [{"text": "a2a"}]
+      }
+    }
+  }'
 ```
 
 ---

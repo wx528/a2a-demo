@@ -9,6 +9,14 @@
 
 ### Added
 
+- 核心数据模型全面对齐 A2A v1.0 规范（TaskStatus、Part、Message、Artifact、AgentCard 等）
+- Agent Server 改为 JSON-RPC 2.0 绑定，统一入口 `POST /rpc`
+- Agent Card 新增 `supportedInterfaces`，声明协议绑定、版本与 RPC 入口地址
+- Orchestrator 改为 A2A JSON-RPC 2.0 客户端调用远端 Agent
+- 新增 `tasks/send`、`tasks/get`、`tasks/cancel`、`tasks/list` 等 JSON-RPC 方法
+- 新增 `POST /rpc/stream` SSE 流式入口，支持 `tasks/sendSubscribe` 与 `tasks/subscribe`
+- 新增 `test_a2a.py`（TestClient 单元测试）与 `test_e2e.py`（真实端口端到端测试）
+- 为旧版 Web 会议室保留 `TextPart` / `TaskSendParams` 等向后兼容别名
 - Web 会议室新增「圆桌讨论模式（Roundtable）」：由 Moderator 主持，支持多轮自由讨论
 - 新增 `moderator` 主持人 Agent：负责开场、控制发言顺序、总结讨论
 - 每个 Agent 在圆桌模式下可以听到其他 Agent 的发言，并自主决定是否参与讨论（支持 PASS）
@@ -18,11 +26,20 @@
 
 ### Changed
 
+- Agent 返回的结果从 `Task.messages` 迁移到 `Task.artifacts`，符合 A2A 规范
+- Task 状态由字符串改为 `TaskStatus` 对象（含 state / message / timestamp）
+- 使用 `sessionId` 改为规范中的 `contextId`
+- 补充完整 Task 生命周期状态：`submitted`、`working`、`completed`、`failed`、`canceled`、`input-required`、`rejected`、`auth-required`
+- README 中的 curl 示例更新为 JSON-RPC 格式
 - 保留原有「流水线模式（Pipeline）」，作为默认模式继续可用
 - 优化上下文长度控制，避免长讨论超出 LLM 上下文限制
 - 优化圆桌讨论流程：移除主持人对每个 Agent 的单独决策调用，改为 Agent 自我判断是否 PASS，减少约 50% LLM 调用
 - 修复圆桌模式下 Writing、Code、Review 等 Agent 输出被截断的问题，按角色分配合理的 `max_tokens`
 - 限制圆桌模式下单次 Agent 发言长度，降低多轮讨论耗时和上下文膨胀
+
+### Notes
+
+- Web 会议室（`web/main.py`）尚未改造为通过 A2A 端点调用 Agent，将在后续版本中完成
 
 ## [0.1.0] - 2026-06-15
 

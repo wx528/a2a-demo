@@ -1,31 +1,31 @@
 """
-Writing Agent - A2A 示例 Agent
+Writing Agent - A2A 合规示例（JSON-RPC 2.0 绑定）
 能力：基于研究摘要，生成一篇格式化文章
 """
 
 import os
-import uuid
-import asyncio
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-
 import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore
 from shared.models import (
-    TaskStatus, TextPart, Message, Task, TaskSendParams,
-    AgentCard, AgentSkill, AgentCapabilities
+    AgentCapabilities,
+    AgentCard,
+    AgentInterface,
+    AgentSkill,
+    Task,
+    TaskState,
 )
 from shared.llm_client import call_llm
 
 
 AGENT_PORT = int(os.getenv("PORT", 8002))
 AGENT_HOST = os.getenv("HOST", "localhost")
-AGENT_URL = f"http://{AGENT_HOST}:{AGENT_PORT}"
+AGENT_URL = os.getenv("AGENT_URL", f"http://{AGENT_HOST}:{AGENT_PORT}")
 
 
 def generate_article(research_summary: str) -> str:
-    """优先调用 LLM 生成文章，失败则回退到模板"""
+    """优先调用 LLM 生成文章，失败则回退到模板。"""
     lines = research_summary.split("\n")
     topic = "该主题"
     for line in lines:
@@ -47,11 +47,9 @@ def generate_article(research_summary: str) -> str:
         max_tokens=4000,
     )
     if llm_result:
-        # 清理可能的思考标签
         cleaned = llm_result.split("</think>")[-1].strip()
         return cleaned
 
-    # LLM 不可用时回退
     article = f"""# {topic} 入门指南
 
 ## 引言
@@ -77,14 +75,40 @@ def generate_article(research_summary: str) -> str:
     return article
 
 
+def process_task(task: Task, store: InMemoryTaskStore):
+    """写作 Agent 的核心处理逻辑。"""
+    store.update_status(task, TaskState.WORKING, "正在写作...")
+
+    user_text = ""
+    for msg in task.history:
+        if msg.role.value == "user":
+            for part in msg.parts:
+                if part.text:
+                    user_text += part.text
+
+    article = generate_article(user_text)
+    store.add_artifact(task, "article", article, "text/markdown")
+    store.update_status(task, TaskState.COMPLETED, "写作完成")
+
+
 agent_card = AgentCard(
     name="writing-agent",
     description="写作型 Agent，基于研究摘要生成格式化文章",
-    url=AGENT_URL,
+    supported_interfaces=[
+        AgentInterface(
+            url=f"{AGENT_URL}/rpc",
+            protocol_binding="JSONRPC",
+            protocol_version="1.0",
+        )
+    ],
     version="1.0.0",
-    defaultInputModes=["text"],
-    defaultOutputModes=["text"],
-    capabilities=AgentCapabilities(streaming=False, pushNotifications=False),
+    capabilities=AgentCapabilities(
+        streaming=False,
+        push_notifications=False,
+        extended_agent_card=False,
+    ),
+    default_input_modes=["text/plain", "text/markdown"],
+    default_output_modes=["text/markdown"],
     skills=[
         AgentSkill(
             id="write-article",
@@ -92,75 +116,18 @@ agent_card = AgentCard(
             description="根据已有素材生成 Markdown 格式文章",
             tags=["writing", "markdown"],
             examples=["根据 Kubernetes 摘要写文章"],
+            input_modes=["text/plain", "text/markdown"],
+            output_modes=["text/markdown"],
         )
     ],
 )
 
 
-tasks: dict[str, Task] = {}
-
-
-app = FastAPI(title="Writing Agent (A2A)")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/.well-known/agent.json")
-async def get_agent_card():
-    return agent_card.model_dump()
-
-
-@app.post("/tasks/send")
-async def send_task(params: TaskSendParams):
-    task_id = params.id or str(uuid.uuid4())
-    session_id = params.sessionId or str(uuid.uuid4())
-
-    user_text = ""
-    for part in params.message.parts:
-        if part.type == "text":
-            user_text += part.text
-
-    task = Task(
-        id=task_id,
-        sessionId=session_id,
-        status=TaskStatus.WORKING,
-        messages=[params.message],
-        history=[params.message],
-    )
-    tasks[task_id] = task
-
-    await asyncio.sleep(0.5)
-
-    article = generate_article(user_text)
-
-    agent_message = Message(
-        role="agent",
-        parts=[TextPart(text=article)],
-    )
-
-    task.status = TaskStatus.COMPLETED
-    task.messages.append(agent_message)
-    task.history.append(agent_message)
-
-    return task.model_dump()
-
-
-@app.get("/tasks/{task_id}")
-async def get_task(task_id: str):
-    if task_id not in tasks:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return tasks[task_id].model_dump()
-
-
-@app.get("/")
-async def root():
-    return {"agent": "writing-agent", "protocol": "A2A", "url": AGENT_URL}
+server = A2AJSONRPCServer(agent_card=agent_card, process_task=process_task)
+app = server.build_app(title="Writing Agent (A2A / JSON-RPC)")
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
