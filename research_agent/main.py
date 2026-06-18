@@ -25,32 +25,19 @@ AGENT_HOST = os.getenv("HOST", "localhost")
 AGENT_URL = os.getenv("AGENT_URL", f"http://{AGENT_HOST}:{AGENT_PORT}")
 
 
-# 模拟知识库
-KNOWLEDGE_BASE = {
-    "kubernetes": "Kubernetes 是一个开源的容器编排平台，由 Google 设计并捐赠给 CNCF。",
-    "a2a": "A2A (Agent-to-Agent) 是 Google 提出的开放协议，用于不同 AI Agent 之间的互操作。",
-    "docker": "Docker 是一个开源的容器化平台，可以让应用及其依赖打包成标准化单元。",
-    "python": "Python 是一种解释型、高级、通用的编程语言，广泛应用于 AI 和 Web 开发。",
-}
+DEFAULT_SYSTEM_PROMPT = (
+    "你是一名全能的技术助手。请严格按照用户的指令回答问题。"
+    "直接输出最终答案，不要输出思考过程。"
+)
 
 
-def generate_summary(topic: str) -> str:
-    """优先调用 LLM 生成摘要，失败则回退到本地知识库。"""
-    system_prompt = (
-        "你是一名技术研究助手。用户会给你一个技术主题，"
-        "请用 2-3 句话简明扼要地总结这个主题的核心概念和用途。"
-        "回答用中文，控制在 150 字以内。"
-        "直接输出最终答案，不要输出思考过程。"
-    )
-
-    llm_result = call_llm(system_prompt, f"请研究这个主题：{topic}")
+def generate_response(user_text: str) -> str:
+    """调用 LLM 直接回答用户输入；LLM 不可用时给出友好回退。"""
+    llm_result = call_llm(DEFAULT_SYSTEM_PROMPT, user_text)
     if llm_result:
-        cleaned = llm_result.split("</think>")[-1].strip()
-        return f"【研究摘要】\n主题：{topic}\n\n{cleaned}"
+        return llm_result.split("</think>")[-1].strip()
 
-    topic_lower = topic.lower()
-    base = KNOWLEDGE_BASE.get(topic_lower, f"关于 {topic} 的信息有限，建议进一步搜索。")
-    return f"【研究摘要】\n主题：{topic}\n\n{base}\n\n（本地回退，未调用 LLM）"
+    return "（当前 LLM 服务不可用，无法生成回答。）"
 
 
 def process_task(task: Task, store: InMemoryTaskStore):
@@ -64,8 +51,8 @@ def process_task(task: Task, store: InMemoryTaskStore):
                 if part.text:
                     user_text += part.text
 
-    summary = generate_summary(user_text)
-    store.add_artifact(task, "research-summary", summary, "text/markdown")
+    response = generate_response(user_text)
+    store.add_artifact(task, "response", response, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "研究完成")
 
 

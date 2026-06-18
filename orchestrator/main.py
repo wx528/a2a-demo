@@ -79,10 +79,15 @@ async def create_article(req: CreateArticleRequest):
     """完整工作流：研究 -> 写作"""
     topic = req.topic
 
-    # Step 1: 调用 research agent
+    # Step 1: 调用 research agent 获取研究摘要
+    research_prompt = (
+        "你是一名技术研究助手。请用 2-3 句话简明扼要地总结下面这个技术主题的核心概念和用途。"
+        "回答用中文，控制在 150 字以内。直接输出最终答案，不要输出思考过程。\n\n"
+        f"主题：{topic}"
+    )
     try:
         research_client = A2AJSONRPCClient(RESEARCH_AGENT_URL)
-        research_task = await research_client.send_message(topic)
+        research_task = await research_client.send_message(research_prompt)
         research_summary = extract_agent_text(research_task)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Research agent failed: {e}")
@@ -90,10 +95,17 @@ async def create_article(req: CreateArticleRequest):
     if not research_summary:
         raise HTTPException(status_code=502, detail="Research agent returned empty result")
 
-    # Step 2: 调用 writing agent
+    # Step 2: 调用 writing agent 基于摘要生成文章
+    writing_prompt = (
+        "你是一名技术博客作者。请根据下面提供的研究摘要，"
+        "写一篇结构清晰的 Markdown 格式入门文章。"
+        "文章包含：引言、核心概念、应用场景、总结四个部分。"
+        "回答用中文。直接输出文章正文，不要输出思考过程。\n\n"
+        f"研究摘要：\n{research_summary}"
+    )
     try:
         writing_client = A2AJSONRPCClient(WRITING_AGENT_URL)
-        writing_task = await writing_client.send_message(research_summary)
+        writing_task = await writing_client.send_message(writing_prompt)
         article = extract_agent_text(writing_task)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Writing agent failed: {e}")

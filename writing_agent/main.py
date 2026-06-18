@@ -24,55 +24,19 @@ AGENT_HOST = os.getenv("HOST", "localhost")
 AGENT_URL = os.getenv("AGENT_URL", f"http://{AGENT_HOST}:{AGENT_PORT}")
 
 
-def generate_article(research_summary: str) -> str:
-    """优先调用 LLM 生成文章，失败则回退到模板。"""
-    lines = research_summary.split("\n")
-    topic = "该主题"
-    for line in lines:
-        if line.startswith("主题："):
-            topic = line.replace("主题：", "").strip()
-            break
+DEFAULT_SYSTEM_PROMPT = (
+    "你是一名全能的技术助手。请严格按照用户的指令回答问题。"
+    "直接输出最终答案，不要输出思考过程。"
+)
 
-    system_prompt = (
-        "你是一名技术博客作者。请根据提供的研究摘要，"
-        "写一篇结构清晰的 Markdown 格式入门文章。"
-        "文章包含：引言、核心概念、应用场景、总结四个部分。"
-        "回答用中文。"
-        "直接输出文章正文，不要输出思考过程。"
-    )
 
-    llm_result = call_llm(
-        system_prompt,
-        f"请基于以下摘要写一篇文章：\n\n{research_summary}",
-        max_tokens=4000,
-    )
+def generate_response(user_text: str) -> str:
+    """调用 LLM 直接回答用户输入；LLM 不可用时给出友好回退。"""
+    llm_result = call_llm(DEFAULT_SYSTEM_PROMPT, user_text, max_tokens=4000)
     if llm_result:
-        cleaned = llm_result.split("</think>")[-1].strip()
-        return cleaned
+        return llm_result.split("</think>")[-1].strip()
 
-    article = f"""# {topic} 入门指南
-
-## 引言
-
-{topic} 是当前技术领域的重要话题。本文将从基础概念出发，帮助读者快速理解其核心思想。
-
-## 核心概念
-
-{research_summary}
-
-## 应用场景
-
-- 企业级系统构建
-- 自动化流程编排
-- 提升开发运维效率
-
-## 总结
-
-掌握 {topic} 对于现代软件工程师来说越来越重要，建议从官方文档和实践项目入手。
-
-（本地回退，未调用 LLM）
-"""
-    return article
+    return "（当前 LLM 服务不可用，无法生成回答。）"
 
 
 def process_task(task: Task, store: InMemoryTaskStore):
@@ -86,8 +50,8 @@ def process_task(task: Task, store: InMemoryTaskStore):
                 if part.text:
                     user_text += part.text
 
-    article = generate_article(user_text)
-    store.add_artifact(task, "article", article, "text/markdown")
+    response = generate_response(user_text)
+    store.add_artifact(task, "response", response, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "写作完成")
 
 
