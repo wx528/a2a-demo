@@ -65,6 +65,8 @@
         }
 
         function App() {
+            const [meetings, setMeetings] = useState([]);
+            const [view, setView] = useState('list');
             const [meeting, setMeeting] = useState(null);
             const [topic, setTopic] = useState("");
             const [mode, setMode] = useState("pipeline");
@@ -72,6 +74,53 @@
             const [input, setInput] = useState("");
             const [connected, setConnected] = useState(false);
             const messagesEndRef = useRef(null);
+
+            const updateUrl = (meetingId) => {
+                const url = new URL(window.location.href);
+                if (meetingId) {
+                    url.searchParams.set('meeting', meetingId);
+                } else {
+                    url.searchParams.delete('meeting');
+                }
+                window.history.replaceState({}, '', url);
+            };
+
+            const loadMeetings = async () => {
+                try {
+                    const res = await fetch('/api/meetings');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    setMeetings(data);
+                } catch (e) {
+                    console.error('load meetings failed', e);
+                }
+            };
+
+            const deleteMeeting = async (e, id) => {
+                e.stopPropagation();
+                if (!confirm('确定删除这个会议室吗？')) return;
+                try {
+                    await fetch(`/api/meetings/${id}`, { method: 'DELETE' });
+                    setMeetings(prev => prev.filter(m => m.id !== id));
+                    if (meeting?.id === id) {
+                        setMeeting(null);
+                        setView('list');
+                        updateUrl(null);
+                    }
+                } catch (err) {
+                    console.error('delete meeting failed', err);
+                }
+            };
+
+            const openMeeting = async (meetingId) => {
+                const res = await fetch(`/api/meetings/${meetingId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                setMeeting(data);
+                setView('room');
+                updateUrl(meetingId);
+                connectSSE(meetingId);
+            };
 
             const createMeeting = async () => {
                 if (!topic.trim()) return;
@@ -82,6 +131,9 @@
                 });
                 const data = await res.json();
                 setMeeting(data);
+                setView('room');
+                updateUrl(data.id);
+                setMeetings(prev => [data, ...prev]);
                 connectSSE(data.id);
             };
 
@@ -197,6 +249,14 @@
             };
 
             useEffect(() => {
+                // 页面加载时拉取会议列表，并检查 URL 中是否有要直接打开的会议
+                loadMeetings();
+                const params = new URLSearchParams(window.location.search);
+                const mid = params.get('meeting');
+                if (mid) openMeeting(mid);
+            }, []);
+
+            useEffect(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
                 // 每次消息更新后高亮代码块
                 if (typeof hljs !== 'undefined') {
@@ -215,167 +275,208 @@
                 return { __html: safeHtml };
             };
 
-            if (!meeting) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center">
-                        <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
-                            <div className="text-4xl mb-4 text-center">🤖</div>
-                            <h1 className="text-2xl font-bold text-center mb-2">A2A 多人会议室</h1>
-                            <p className="text-gray-500 text-center mb-6">
-                                创建一个主题，邀请多个 Agent 一起讨论
-                            </p>
-                            <input
-                                type="text"
-                                value={topic}
-                                onChange={(e) => setTopic(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && createMeeting()}
-                                placeholder="输入会议主题，例如：A2A protocol"
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                            />
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">会议模式</label>
-                                <select
-                                    value={mode}
-                                    onChange={(e) => setMode(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="pipeline">流水线模式（依次发言）</option>
-                                    <option value="roundtable">圆桌讨论模式（Moderator 主持）</option>
-                                </select>
-                            </div>
-                            {mode === "roundtable" && (
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        讨论轮数：{maxRounds} 轮
-                                    </label>
-                                    <input
-                                        type="range"
-                                        min="1"
-                                        max="10"
-                                        step="1"
-                                        value={maxRounds}
-                                        onChange={(e) => setMaxRounds(parseInt(e.target.value, 10))}
-                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                    />
-                                    <div className="flex justify-between text-xs text-gray-400 mt-1">
-                                        <span>1</span>
-                                        <span>10</span>
-                                    </div>
-                                </div>
-                            )}
-                            <button
-                                onClick={createMeeting}
-                                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium"
-                            >
-                                创建会议室
-                            </button>
-                        </div>
-                    </div>
-                );
-            }
+
+            const isRoom = view === 'room' && meeting;
 
             return (
-                <div className="min-h-screen flex flex-col">
-                    {/* 顶部栏 */}
-                    <header className="bg-white shadow-sm border-b px-6 py-4">
-                        <div className="max-w-5xl mx-auto flex items-center justify-between">
-                            <div>
-                                <h1 className="text-xl font-bold">🤖 A2A 多人会议室</h1>
-                                <p className="text-sm text-gray-500">
-                                    主题：{meeting.topic}
-                                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                                        {meeting.mode === 'roundtable' ? `圆桌讨论 · ${meeting.max_rounds} 轮` : '流水线'}
-                                    </span>
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2 text-sm">
-                                <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                {connected ? '实时连接中' : '已断开'}
-                            </div>
-                        </div>
-                    </header>
-
-                    {/* 参与者状态 */}
-                    <div className="bg-gray-50 border-b px-6 py-3">
-                        <div className="max-w-5xl mx-auto flex gap-4">
-                            {meeting.participants.map(p => (
-                                <div key={p.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm">
-                                    <span className="text-xl">{p.avatar}</span>
-                                    <div>
-                                        <div className="text-sm font-medium">{p.name}</div>
-                                        <div className="text-xs text-gray-500">
-                                            {p.status === 'thinking' && (
-                                                <span className="flex items-center gap-1">
-                                                    思考中
-                                                    <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
-                                                    <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
-                                                    <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
-                                                </span>
-                                            )}
-                                            {p.status === 'speaking' && '发言中'}
-                                            {p.status === 'idle' && '等待中'}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* 消息区域 */}
-                    <main className="flex-1 overflow-y-auto px-6 py-6">
-                        <div className="max-w-5xl mx-auto space-y-4">
-                            {meeting.messages.map(msg => (
-                                <div
-                                    key={msg.id}
-                                    className={`flex ${msg.participant_id === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div className={`max-w-3xl flex gap-3 ${msg.participant_id === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                                        <div className="text-2xl">{msg.participant_id === 'system' ? '🔔' : meeting.participants.find(p => p.id === msg.participant_id)?.avatar || '💬'}</div>
-                                        <div className={`rounded-2xl px-5 py-3 ${
-                                            msg.participant_id === 'user'
-                                                ? 'bg-blue-600 text-white'
-                                                : msg.participant_id === 'system'
-                                                    ? 'bg-yellow-100 text-yellow-800'
-                                                    : 'bg-white shadow-sm border'
-                                        }`}>
-                                            <div className="text-xs opacity-75 mb-1">
-                                                {msg.participant_name} · {msg.timestamp}
-                                            </div>
-                                            {msg.participant_id === 'user' || msg.participant_id === 'system' ? (
-                                                <div className="whitespace-pre-wrap">{msg.content}</div>
-                                            ) : (
-                                                <div
-                                                    className="markdown-body"
-                                                    dangerouslySetInnerHTML={renderMarkdown(msg.content)}
-                                                />
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            <div ref={messagesEndRef} />
-                        </div>
-                    </main>
-
-                    {/* 输入框 */}
-                    <footer className="bg-white border-t px-6 py-4">
-                        <div className="max-w-5xl mx-auto flex gap-3">
-                            <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                                placeholder="继续提问或追加需求..."
-                                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                <div className="min-h-screen flex">
+                    {/* 侧边栏：会议列表 */}
+                    <aside className="w-72 bg-white border-r flex flex-col shrink-0">
+                        <div className="p-4 border-b">
+                            <h2 className="text-lg font-bold">🤖 A2A 会议室</h2>
                             <button
-                                onClick={sendMessage}
-                                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+                                onClick={() => { setMeeting(null); setView('list'); updateUrl(null); }}
+                                className="mt-3 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium"
                             >
-                                发送
+                                + 新建会议
                             </button>
                         </div>
-                    </footer>
+                        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                            {meetings.length === 0 && (
+                                <div className="text-gray-400 text-sm text-center py-8">暂无历史会议</div>
+                            )}
+                            {meetings.map(m => (
+                                <div
+                                    key={m.id}
+                                    onClick={() => openMeeting(m.id)}
+                                    className={`p-3 rounded-lg cursor-pointer border ${meeting?.id === m.id ? 'bg-blue-50 border-blue-200' : 'bg-white hover:bg-gray-50 border-gray-200'}`}
+                                >
+                                    <div className="font-medium text-sm truncate" title={m.topic}>{m.topic}</div>
+                                    <div className="text-xs text-gray-500 mt-1 flex items-center justify-between">
+                                        <span>{m.mode === 'roundtable' ? `圆桌 · ${m.max_rounds}轮` : '流水线'} · {m.created_at}</span>
+                                        <button
+                                            onClick={(e) => deleteMeeting(e, m.id)}
+                                            className="text-gray-400 hover:text-red-500 px-1"
+                                            title="删除"
+                                        >×</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </aside>
+
+                    {/* 主内容区 */}
+                    <div className="flex-1 flex flex-col min-w-0 bg-gray-100">
+                        {!isRoom ? (
+                            <div className="flex-1 flex items-center justify-center p-6">
+                                <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
+                                    <div className="text-4xl mb-4 text-center">🤖</div>
+                                    <h1 className="text-2xl font-bold text-center mb-2">A2A 多人会议室</h1>
+                                    <p className="text-gray-500 text-center mb-6">
+                                        创建一个主题，邀请多个 Agent 一起讨论
+                                    </p>
+                                    <input
+                                        type="text"
+                                        value={topic}
+                                        onChange={(e) => setTopic(e.target.value)}
+                                        onKeyPress={(e) => e.key === 'Enter' && createMeeting()}
+                                        placeholder="输入会议主题，例如：A2A protocol"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                                    />
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">会议模式</label>
+                                        <select
+                                            value={mode}
+                                            onChange={(e) => setMode(e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="pipeline">流水线模式（依次发言）</option>
+                                            <option value="roundtable">圆桌讨论模式（Moderator 主持）</option>
+                                        </select>
+                                    </div>
+                                    {mode === "roundtable" && (
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                讨论轮数：{maxRounds} 轮
+                                            </label>
+                                            <input
+                                                type="range"
+                                                min="1"
+                                                max="10"
+                                                step="1"
+                                                value={maxRounds}
+                                                onChange={(e) => setMaxRounds(parseInt(e.target.value, 10))}
+                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                            />
+                                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                                <span>1</span>
+                                                <span>10</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={createMeeting}
+                                        className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+                                    >
+                                        创建会议室
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="min-h-screen flex flex-col">
+                                {/* 顶部栏 */}
+                                <header className="bg-white shadow-sm border-b px-6 py-4">
+                                    <div className="max-w-5xl mx-auto flex items-center justify-between">
+                                        <div>
+                                            <h1 className="text-xl font-bold">🤖 A2A 多人会议室</h1>
+                                            <p className="text-sm text-gray-500">
+                                                主题：{meeting.topic}
+                                                <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                                                    {meeting.mode === 'roundtable' ? `圆桌讨论 · ${meeting.max_rounds} 轮` : '流水线'}
+                                                </span>
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                            {connected ? '实时连接中' : '已断开'}
+                                        </div>
+                                    </div>
+                                </header>
+
+                                {/* 参与者状态 */}
+                                <div className="bg-gray-50 border-b px-6 py-3">
+                                    <div className="max-w-5xl mx-auto flex gap-4">
+                                        {meeting.participants.map(p => (
+                                            <div key={p.id} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm">
+                                                <span className="text-xl">{p.avatar}</span>
+                                                <div>
+                                                    <div className="text-sm font-medium">{p.name}</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {p.status === 'thinking' && (
+                                                            <span className="flex items-center gap-1">
+                                                                思考中
+                                                                <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
+                                                                <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
+                                                                <span className="thinking-dot w-1 h-1 bg-blue-500 rounded-full inline-block"></span>
+                                                            </span>
+                                                        )}
+                                                        {p.status === 'speaking' && '发言中'}
+                                                        {p.status === 'idle' && '等待中'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* 消息区域 */}
+                                <main className="flex-1 overflow-y-auto px-6 py-6">
+                                    <div className="max-w-5xl mx-auto space-y-4">
+                                        {meeting.messages.map(msg => (
+                                            <div
+                                                key={msg.id}
+                                                className={`flex ${msg.participant_id === 'user' ? 'justify-end' : 'justify-start'}`}
+                                            >
+                                                <div className={`max-w-3xl flex gap-3 ${msg.participant_id === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                    <div className="text-2xl">{msg.participant_id === 'system' ? '🔔' : meeting.participants.find(p => p.id === msg.participant_id)?.avatar || '💬'}</div>
+                                                    <div className={`rounded-2xl px-5 py-3 ${
+                                                        msg.participant_id === 'user'
+                                                            ? 'bg-blue-600 text-white'
+                                                            : msg.participant_id === 'system'
+                                                                ? 'bg-yellow-100 text-yellow-800'
+                                                                : 'bg-white shadow-sm border'
+                                                    }`}>
+                                                        <div className="text-xs opacity-75 mb-1">
+                                                            {msg.participant_name} · {msg.timestamp}
+                                                        </div>
+                                                        {msg.participant_id === 'user' || msg.participant_id === 'system' ? (
+                                                            <div className="whitespace-pre-wrap">{msg.content}</div>
+                                                        ) : (
+                                                            <div
+                                                                className="markdown-body"
+                                                                dangerouslySetInnerHTML={renderMarkdown(msg.content)}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div ref={messagesEndRef} />
+                                    </div>
+                                </main>
+
+                                {/* 输入框 */}
+                                <footer className="bg-white border-t px-6 py-4">
+                                    <div className="max-w-5xl mx-auto flex gap-3">
+                                        <input
+                                            type="text"
+                                            value={input}
+                                            onChange={(e) => setInput(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                                            placeholder="继续提问或追加需求..."
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <button
+                                            onClick={sendMessage}
+                                            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+                                        >
+                                            发送
+                                        </button>
+                                    </div>
+                                </footer>
+                            </div>
+                        )}
+                    </div>
                 </div>
             );
         }

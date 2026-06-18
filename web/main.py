@@ -9,6 +9,7 @@ import asyncio
 import json
 from datetime import datetime
 from typing import Dict, List
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, FileResponse
@@ -18,6 +19,7 @@ from pydantic import BaseModel
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.a2a_client import A2AJSONRPCClient
+import db
 
 
 WEB_PORT = int(os.getenv("PORT", 8080))
@@ -25,7 +27,18 @@ RESEARCH_AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://research-agent:8001
 WRITING_AGENT_URL = os.getenv("WRITING_AGENT_URL", "http://writing-agent:8002")
 
 
-app = FastAPI(title="A2A Meeting Room")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时初始化数据库并把历史会议加载到内存
+    db.init_db()
+    for meeting_row in db.list_meetings():
+        meeting = db.get_meeting(meeting_row["id"])
+        if meeting:
+            meetings[meeting["id"]] = Meeting(**meeting)
+    yield
+
+
+app = FastAPI(title="A2A Meeting Room", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -169,6 +182,7 @@ def create_meeting(topic: str, mode: str = "pipeline", max_rounds: int = 1) -> M
         ],
     )
     meetings[meeting_id] = meeting
+    db.save_meeting(meeting.model_dump())
     return meeting
 
 
@@ -189,6 +203,7 @@ def add_message(meeting_id: str, participant_id: str, content: str, msg_type: st
         type=msg_type,
     )
     meeting.messages.append(msg)
+    db.save_message(meeting_id, msg.model_dump())
     return msg
 
 
@@ -197,6 +212,7 @@ def update_participant_status(meeting_id: str, participant_id: str, status: str)
     for p in meeting.participants:
         if p.id == participant_id:
             p.status = status
+    db.update_participant_status(meeting_id, participant_id, status)
 
 
 def sse_event(event: str, data: dict) -> str:
@@ -381,6 +397,17 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
 
 # ============== API 路由 ==============
 
+def _ensure_meeting_loaded(meeting_id: str) -> bool:
+    """如果会议不在内存中，尝试从数据库加载。"""
+    if meeting_id in meetings:
+        return True
+    meeting_data = db.get_meeting(meeting_id)
+    if meeting_data:
+        meetings[meeting_id] = Meeting(**meeting_data)
+        return True
+    return False
+
+
 @app.get("/")
 async def serve_react():
     static_file = os.path.join(
@@ -389,11 +416,24 @@ async def serve_react():
     return FileResponse(static_file)
 
 
+@app.get("/api/meetings")
+async def list_meetings_api():
+    """列出所有历史会议。"""
+    return db.list_meetings()
+
+
 @app.get("/api/meetings/{meeting_id}")
 async def get_meeting(meeting_id: str):
-    if meeting_id not in meetings:
+    if not _ensure_meeting_loaded(meeting_id):
         return {"error": "Meeting not found"}, 404
     return meetings[meeting_id].model_dump()
+
+
+@app.delete("/api/meetings/{meeting_id}")
+async def delete_meeting_api(meeting_id: str):
+    db.delete_meeting(meeting_id)
+    meetings.pop(meeting_id, None)
+    return {"deleted": True}
 
 
 class CreateMeetingRequest(BaseModel):
@@ -415,7 +455,7 @@ class SendMessageRequest(BaseModel):
 
 @app.post("/api/meetings/{meeting_id}/messages")
 async def send_user_message(meeting_id: str, req: SendMessageRequest):
-    if meeting_id not in meetings:
+    if not _ensure_meeting_loaded(meeting_id):
         return {"error": "Meeting not found"}, 404
 
     msg = add_message(meeting_id, "user", req.content)
@@ -425,7 +465,7 @@ async def send_user_message(meeting_id: str, req: SendMessageRequest):
 @app.get("/api/meetings/{meeting_id}/events")
 async def meeting_events(meeting_id: str):
     """SSE 实时事件流"""
-    if meeting_id not in meetings:
+    if not _ensure_meeting_loaded(meeting_id):
         return {"error": "Meeting not found"}, 404
 
     async def event_stream():
@@ -459,7 +499,7 @@ async def meeting_events(meeting_id: str):
 @app.post("/api/meetings/{meeting_id}/run")
 async def run_agents(meeting_id: str):
     """手动触发 agent 运行（用于用户追加消息后）"""
-    if meeting_id not in meetings:
+    if not _ensure_meeting_loaded(meeting_id):
         return {"error": "Meeting not found"}, 404
 
     meeting = meetings[meeting_id]
