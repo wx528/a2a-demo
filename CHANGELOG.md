@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+无。
+
+## [0.3.0] - 2026-06-18
+
 ### Added
 
 - 核心数据模型全面对齐 A2A v1.0 规范（TaskStatus、Part、Message、Artifact、AgentCard 等）
@@ -62,5 +66,7 @@
 - 添加 `README.md` 项目文档
 - 添加 `CHANGELOG.md`
 
-[Unreleased]: https://github.com/scott/a2a/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/scott/a2a/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/scott/a2a/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/scott/a2a/releases/tag/v0.2.0
 [0.1.0]: https://github.com/scott/a2a/releases/tag/v0.1.0
