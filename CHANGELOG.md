@@ -66,7 +66,8 @@
 - 添加 `README.md` 项目文档
 - 添加 `CHANGELOG.md`
 
-[Unreleased]: https://github.com/scott/a2a/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/scott/a2a/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/scott/a2a/releases/tag/v0.2.0
-[0.1.0]: https://github.com/scott/a2a/releases/tag/v0.1.0
+<!-- 本项目为私有仓库，以下链接为占位符；如需公开，可替换为实际代码托管地址 -->
+[Unreleased]: #
+[0.3.0]: #
+[0.2.0]: #
+[0.1.0]: #
