@@ -9,6 +9,18 @@
 
 无。
 
+## [0.2.1] - 2026-06-18
+
+### Added
+
+- Web 会议室支持 Markdown 渲染与 fenced code block 代码高亮
+
+### Fixed
+
+- 修复 `@babel/standalone` automatic JSX runtime 导致页面无法渲染的问题
+- 修复圆桌/流水线模式下 Moderator、Code、Review 等 Agent 把角色提示词泄漏到会议室消息中的问题
+- 将 `research-agent` / `writing-agent` 改为通用指令跟随 Agent，角色特定指令由调用方（Orchestrator / Web）提供
+
 ## [0.3.0] - 2026-06-18
 
 ### Added
@@ -69,5 +81,6 @@
 <!-- 本项目为私有仓库，以下链接为占位符；如需公开，可替换为实际代码托管地址 -->
 [Unreleased]: #
 [0.3.0]: #
+[0.2.1]: #
 [0.2.0]: #
 [0.1.0]: #
