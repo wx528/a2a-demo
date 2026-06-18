@@ -9,16 +9,14 @@ Orchestrator - A2A 编排器示例（JSON-RPC 2.0 客户端）
 
 import os
 import sys
-import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.models import JSONRPCRequest, JSONRPCResponse, Message, Part, Role
+from shared.a2a_client import A2AJSONRPCClient
 
 
 ORCHESTRATOR_PORT = int(os.getenv("PORT", 8000))
@@ -37,52 +35,6 @@ app.add_middleware(
 
 class CreateArticleRequest(BaseModel):
     topic: str
-
-
-class A2AJSONRPCClient:
-    """极简 A2A JSON-RPC 2.0 客户端。"""
-
-    def __init__(self, agent_url: str):
-        self.agent_url = agent_url.rstrip("/")
-        self.rpc_url = f"{self.agent_url}/rpc"
-
-    async def call(self, method: str, params: Dict[str, Any]) -> Any:
-        payload = JSONRPCRequest(
-            id=str(uuid.uuid4()),
-            method=method,
-            params=params,
-        ).model_dump()
-
-        async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
-            resp = await client.post(
-                self.rpc_url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            resp.raise_for_status()
-            rpc_resp = JSONRPCResponse.model_validate(resp.json())
-
-        if rpc_resp.error:
-            raise RuntimeError(
-                f"A2A RPC error [{rpc_resp.error.code}]: {rpc_resp.error.message}"
-            )
-        return rpc_resp.result
-
-    async def send_message(self, text: str) -> Dict[str, Any]:
-        params = {
-            "message": {
-                "messageId": str(uuid.uuid4()),
-                "role": "user",
-                "parts": [{"text": text}],
-            }
-        }
-        return await self.call("tasks/send", params)
-
-    async def fetch_agent_card(self) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
-            resp = await client.get(f"{self.agent_url}/.well-known/agent.json")
-            resp.raise_for_status()
-            return resp.json()
 
 
 def extract_agent_text(task: Dict[str, Any]) -> str:
@@ -113,13 +65,12 @@ async def root():
 async def list_agents():
     """列出所有已注册 agent 及其 Agent Card。"""
     results = {}
-    async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
-        for name, url in [("research", RESEARCH_AGENT_URL), ("writing", WRITING_AGENT_URL)]:
-            try:
-                resp = await client.get(f"{url}/.well-known/agent.json")
-                results[name] = resp.json()
-            except Exception as e:
-                results[name] = {"error": str(e), "url": url}
+    for name, url in [("research", RESEARCH_AGENT_URL), ("writing", WRITING_AGENT_URL)]:
+        try:
+            client = A2AJSONRPCClient(url)
+            results[name] = await client.fetch_agent_card()
+        except Exception as e:
+            results[name] = {"error": str(e), "url": url}
     return results
 
 

@@ -31,15 +31,12 @@
 - 使用 `sessionId` 改为规范中的 `contextId`
 - 补充完整 Task 生命周期状态：`submitted`、`working`、`completed`、`failed`、`canceled`、`input-required`、`rejected`、`auth-required`
 - README 中的 curl 示例更新为 JSON-RPC 格式
+- Web 会议室（`web/main.py`）改为通过 A2A JSON-RPC 调用 `research-agent` / `writing-agent`，不再直接调用 LLM
 - 保留原有「流水线模式（Pipeline）」，作为默认模式继续可用
 - 优化上下文长度控制，避免长讨论超出 LLM 上下文限制
 - 优化圆桌讨论流程：移除主持人对每个 Agent 的单独决策调用，改为 Agent 自我判断是否 PASS，减少约 50% LLM 调用
 - 修复圆桌模式下 Writing、Code、Review 等 Agent 输出被截断的问题，按角色分配合理的 `max_tokens`
 - 限制圆桌模式下单次 Agent 发言长度，降低多轮讨论耗时和上下文膨胀
-
-### Notes
-
-- Web 会议室（`web/main.py`）尚未改造为通过 A2A 端点调用 Agent，将在后续版本中完成
 
 ## [0.1.0] - 2026-06-15
 

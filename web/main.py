@@ -17,8 +17,7 @@ from pydantic import BaseModel
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.models import TextPart, Message, TaskSendParams
-from shared.llm_client import call_llm
+from shared.a2a_client import A2AJSONRPCClient
 
 
 WEB_PORT = int(os.getenv("PORT", 8080))
@@ -76,59 +75,51 @@ AGENTS = {
         "name": "Moderator",
         "url": RESEARCH_AGENT_URL,
         "avatar": "🎤",
-        "system_prompt": (
+        "role_hint": (
             "你是一场技术讨论会的主持人。你需要控制会议节奏，决定谁下一个发言。"
-            "回答必须简洁，只给出决定或简短说明，不要长篇大论。"
+            "回答必须简洁，只给出决定或简短说明，不要长篇大论。\n\n"
         ),
     },
     "research": {
         "name": "Research Agent",
         "url": RESEARCH_AGENT_URL,
         "avatar": "🔬",
-        "system_prompt": (
-            "你是一名技术研究助手。请对主题进行简明研究，"
-            "用 2-3 句话总结核心概念。回答用中文，控制在 150 字以内。"
-            "直接输出最终答案，不要输出思考过程。"
-        ),
+        "role_hint": "",
     },
     "writing": {
         "name": "Writing Agent",
         "url": WRITING_AGENT_URL,
         "avatar": "✍️",
-        "system_prompt": (
-            "你是一名技术博客作者。请基于提供的摘要，"
-            "写一篇结构清晰的 Markdown 入门文章，包含引言、核心概念、应用场景、总结。"
-            "回答用中文。直接输出文章，不要输出思考过程。"
-        ),
+        "role_hint": "",
     },
     "review": {
         "name": "Review Agent",
         "url": WRITING_AGENT_URL,
         "avatar": "🧐",
-        "system_prompt": (
+        "role_hint": (
             "你是一名技术编辑。请审校提供的文章，"
             "列出 3-5 条具体改进建议，包括内容准确性、结构清晰度、可读性等方面。"
-            "回答用中文。直接输出建议，不要输出思考过程。"
+            "回答用中文。直接输出建议，不要输出思考过程。\n\n"
         ),
     },
     "code": {
         "name": "Code Agent",
         "url": RESEARCH_AGENT_URL,
         "avatar": "💻",
-        "system_prompt": (
+        "role_hint": (
             "你是一名资深工程师。请根据主题提供一个简洁的代码示例或命令行示例，"
             "帮助读者快速上手。代码要有注释，说明关键步骤。"
-            "回答用中文。直接输出代码和说明，不要输出思考过程。"
+            "回答用中文。直接输出代码和说明，不要输出思考过程。\n\n"
         ),
     },
     "summary": {
         "name": "Summary Agent",
         "url": WRITING_AGENT_URL,
         "avatar": "📝",
-        "system_prompt": (
+        "role_hint": (
             "你是一名会议助理。请根据整个会议讨论内容，"
             "用 3-5 条 bullet points 总结核心结论和下一步行动建议。"
-            "回答用中文。直接输出总结，不要输出思考过程。"
+            "回答用中文。直接输出总结，不要输出思考过程。\n\n"
         ),
     },
 }
@@ -214,19 +205,23 @@ def sse_event(event: str, data: dict) -> str:
 
 # ============== Agent 调用 ==============
 
-async def call_agent(agent_key: str, input_text: str, max_tokens: int = None) -> str:
-    """直接调用 agent 的 LLM，不走 HTTP（减少一次网络跳转）"""
+async def call_agent(agent_key: str, input_text: str) -> str:
+    """通过 A2A JSON-RPC 端点调用远端 Agent。"""
     agent = AGENTS[agent_key]
-    default_max_tokens = {"writing": 4000, "code": 3000, "summary": 2000, "review": 2000}.get(agent_key, 1500)
-    result = call_llm(
-        agent["system_prompt"],
-        input_text,
-        max_tokens=max_tokens or default_max_tokens,
-    )
-    if result:
-        cleaned = result.split("</think>")[-1].strip()
-        return cleaned
-    return f"{agent['name']} 暂时无法回答。"
+    full_input = f"{agent.get('role_hint', '')}{input_text}"
+
+    client = A2AJSONRPCClient(agent["url"])
+    try:
+        task = await client.send_message(full_input)
+    except Exception as e:
+        return f"{agent['name']} 调用失败：{e}"
+
+    artifacts = task.get("artifacts") or []
+    if artifacts:
+        for part in artifacts[0].get("parts", []):
+            if part.get("text"):
+                return part["text"].split("</think>")[-1].strip()
+    return f"{agent['name']} 没有返回可用结果。"
 
 
 async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, context: str = ""):
@@ -388,7 +383,10 @@ async def run_roundtable_flow(meeting_id: str, topic: str, max_rounds: int = 1):
 
 @app.get("/")
 async def serve_react():
-    return FileResponse("/app/web/static/index.html")
+    static_file = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "static", "index.html"
+    )
+    return FileResponse(static_file)
 
 
 @app.get("/api/meetings/{meeting_id}")

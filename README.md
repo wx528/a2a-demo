@@ -12,7 +12,7 @@
 - `POST /rpc`：JSON-RPC 入口，支持 `tasks/send`、`tasks/get`、`tasks/cancel`、`tasks/list`
 - `POST /rpc/stream`：SSE 流式入口，支持 `tasks/sendSubscribe`、`tasks/subscribe`
 
-> 本次改造重点：数据模型与 JSON-RPC 绑定对齐 [A2A v1.0 规范](https://a2a-protocol.org/latest/specification/)。Web 会议室仍使用旧接口，将在后续阶段改造。
+> 本次改造重点：数据模型与 JSON-RPC 绑定对齐 [A2A v1.0 规范](https://a2a-protocol.org/latest/specification/)。Web 会议室也已改为通过 A2A JSON-RPC 调用远端 Agent。
 
 ---
 
@@ -252,6 +252,7 @@ docker compose up -d
 
 - **后端**：FastAPI + SSE（Server-Sent Events）实时推送
 - **前端**：React（CDN 版）+ Tailwind CSS
+- **A2A 调用**：会议室中的每个 Agent 发言都通过 `POST /rpc` 发送 `tasks/send` 给 `research-agent` 或 `writing-agent`
 - **实时状态**：Agent 会显示"思考中"、"发言中"、"等待中"等状态
 
 ---
