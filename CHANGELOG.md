@@ -9,6 +9,9 @@
 
 ### Added
 
+- GitHub Actions CI（`.github/workflows/ci.yml`）：ruff + 单元/端到端/Web 集成测试，每次 push/PR 运行，离线不消耗 LLM 额度
+- LLM 真实链路冒烟测试（`test_llm_smoke.py` + `.github/workflows/llm-smoke.yml`）：push main 或手动触发，验证非回退输出、token 级流式与 orchestrator 工作流；默认 DeepSeek（`deepseek-chat`），key 走仓库 Secret `LLM_API_KEY`，无 key 本地自动跳过
+
 - Orchestrator 动态发现：启动时通过 `/.well-known/agent-card.json` 拉取 Agent Card 自动注册（`AGENT_URLS` 环境变量，逗号分隔），支持按 card 名称 / 短名 / skill id 解析，`POST /agents/refresh` 可运行时重新发现，无需重启；旧版成对 URL 环境变量保留为回退
 - 真流式输出：`A2AJSONRPCServer` 新增可选 `process_task_stream` 生成器参数，`SendStreamingMessage` 通过线程 + 队列桥接逐块推送 `TaskArtifactUpdateEvent`（`append` / `lastChunk` 语义，单一 `artifactId`）；新增 `call_llm_stream` 流式 LLM 客户端；`research-agent` 已接入（card 声明 `streaming: true`），`writing-agent` 保持非流式以示范能力协商
 - SQLite 任务持久化：新增 `SqliteTaskStore`（write-through + 重启加载），设置 `TASK_DB` 环境变量即启用；docker compose 为两个 agent 挂载 named volume 并默认开启

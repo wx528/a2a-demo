@@ -1,5 +1,8 @@
 # A2A Agent Swarm 示例
 
+[![CI](https://github.com/wx528/a2a-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/wx528/a2a-demo/actions/workflows/ci.yml)
+[![LLM Smoke](https://github.com/wx528/a2a-demo/actions/workflows/llm-smoke.yml/badge.svg)](https://github.com/wx528/a2a-demo/actions/workflows/llm-smoke.yml)
+
 这是一个最小可运行的 **A2A (Agent-to-Agent)** 示例，包含：
 
 - `research-agent`：研究型 agent，接收主题返回摘要
@@ -221,6 +224,21 @@ export LLM_API_KEY="your-api-key"
 export LLM_BASE_URL="https://api.openai.com/v1"
 export LLM_MODEL="gpt-4o-mini"
 ```
+
+---
+
+## 测试与 CI
+
+| 层级 | 文件 | 说明 |
+|------|------|------|
+| 单元测试 | `test_a2a.py` / `test_registry.py` / `test_task_store.py` | 协议行为、注册表、持久化，无需起服务 |
+| 端到端 | `test_e2e.py` | 起真实进程验证 agent + orchestrator 工作流 |
+| Web 集成 | `test_web.py` | 会议室 SSE 全链路 |
+| LLM 冒烟 | `test_llm_smoke.py` | 真实 LLM 链路（默认 DeepSeek），无 key 自动跳过 |
+
+CI（GitHub Actions）：
+- **CI**（每次 push/PR）：ruff + 全部离线测试，不消耗 LLM 额度
+- **LLM Smoke**（push main / 手动触发）：用真实 key 验证非回退输出与真流式；需在仓库 Secrets 配置 `LLM_API_KEY`（DeepSeek），可用 Variables 覆盖 `LLM_BASE_URL`/`LLM_MODEL`（默认 `https://api.deepseek.com/v1` / `deepseek-chat`）
 
 ---
 

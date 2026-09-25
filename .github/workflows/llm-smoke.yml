@@ -1,0 +1,47 @@
+name: LLM Smoke
+
+# 真实 LLM 链路冒烟测试：手动触发 或 push 到 main 时执行。
+# 需要在仓库 Settings -> Secrets and variables -> Actions 配置：
+#   Secret: LLM_API_KEY   （DeepSeek API Key，sk-...）
+# 可选 Variables（默认即 DeepSeek）：
+#   LLM_BASE_URL = https://api.deepseek.com/v1
+#   LLM_MODEL    = deepseek-chat
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: llm-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    # 仅本仓库触发（fork PR 无 secrets，天然跳过）；不阻塞普通 PR
+    if: github.repository == 'wx528/a2a-demo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.deepseek.com/v1' }}
+      LLM_MODEL: ${{ vars.LLM_MODEL || 'deepseek-chat' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Guard: key configured
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "::error::LLM_API_KEY secret is not configured"
+            exit 1
+          fi
+
+      - name: Run LLM smoke tests (DeepSeek)
+        run: uv run python test_llm_smoke.py
