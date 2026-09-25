@@ -9,6 +9,21 @@
 
 无。
 
+## [0.4.0] - 2026-09-26
+
+### Changed
+
+- 对齐 A2A v1.0.0 规范的 JSON-RPC 方法名：`tasks/send` → `SendMessage`、`tasks/get` → `GetTask`、`tasks/cancel` → `CancelTask`、`tasks/list` → `ListTasks`、`tasks/sendSubscribe` → `SendStreamingMessage`、`tasks/subscribe` → `SubscribeToTask`（旧方法名保留为兼容别名）
+- Agent Card 发现路径改为规范的 `/.well-known/agent-card.json`（旧路径 `agent.json` 保留为兼容别名）
+- 枚举值对齐规范：TaskState 改为 `TASK_STATE_*`、Role 改为 `ROLE_USER` / `ROLE_AGENT`（SCREAMING_SNAKE_CASE）；服务端输入兼容 v0.x 小写旧值，输出一律新值
+- JSON-RPC 错误对齐规范：`error.data` 改为 ProtoJSON Any 数组，包含 `google.rpc.ErrorInfo`（`reason` / `domain: a2a-protocol.org`）；错误码对齐规范映射（`TaskNotFoundError` → `-32001`、`TaskNotCancelableError` → `-32002`）
+- 时间戳对齐规范：`TaskStatus.timestamp` 使用毫秒精度（`YYYY-MM-DDTHH:mm:ss.sssZ`）
+
+### Fixed
+
+- 修复 `SendMessage`（原 `tasks/send`）同步执行 `process_task` 阻塞 FastAPI 事件循环的问题：改为 `asyncio.to_thread` 执行，LLM 慢调用期间服务保持响应
+- `A2AJSONRPCClient.fetch_agent_card` 优先请求规范路径 `agent-card.json`，失败时回退旧路径
+
 ## [0.2.1] - 2026-06-18
 
 ### Added
@@ -80,6 +95,7 @@
 
 <!-- 本项目为私有仓库，以下链接为占位符；如需公开，可替换为实际代码托管地址 -->
 [Unreleased]: #
+[0.4.0]: #
 [0.3.0]: #
 [0.2.1]: #
 [0.2.0]: #

@@ -13,6 +13,7 @@ from shared.models import (
     AgentCard,
     AgentInterface,
     AgentSkill,
+    Role,
     Task,
     TaskState,
 )
@@ -45,7 +46,7 @@ def process_task(task: Task, store: InMemoryTaskStore):
 
     user_text = ""
     for msg in task.history:
-        if msg.role.value == "user":
+        if msg.role == Role.USER:
             for part in msg.parts:
                 if part.text:
                     user_text += part.text

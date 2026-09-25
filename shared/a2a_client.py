@@ -44,14 +44,17 @@ class A2AJSONRPCClient:
         params = {
             "message": {
                 "messageId": str(uuid.uuid4()),
-                "role": "user",
+                "role": "ROLE_USER",
                 "parts": [{"text": text}],
             }
         }
-        return await self.call("tasks/send", params)
+        return await self.call("SendMessage", params)
 
     async def fetch_agent_card(self) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
-            resp = await client.get(f"{self.agent_url}/.well-known/agent.json")
+            # v1.0 规范路径为 agent-card.json，旧版 agent.json 作为回退
+            resp = await client.get(f"{self.agent_url}/.well-known/agent-card.json")
+            if resp.status_code == 404:
+                resp = await client.get(f"{self.agent_url}/.well-known/agent.json")
             resp.raise_for_status()
             return resp.json()

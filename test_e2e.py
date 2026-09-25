@@ -1,6 +1,5 @@
 """End-to-end test: start all 3 services via subprocess and test via HTTP."""
 
-import json
 import os
 import subprocess
 import sys
@@ -88,30 +87,30 @@ def main():
         assert wait_for_ready("http://localhost:8000/"), "orchestrator not ready"
         print("All services ready")
 
-        # Test agent card
+        # Test agent card (v1.0 canonical path)
         for port in [8001, 8002]:
             with httpx.Client(trust_env=False, timeout=5) as client:
-                r = client.get(f"http://localhost:{port}/.well-known/agent.json")
+                r = client.get(f"http://localhost:{port}/.well-known/agent-card.json")
             r.raise_for_status()
             card = r.json()
             assert "supportedInterfaces" in card
             print(f"[OK] agent card on {port}: {card['name']}")
 
-        # Test tasks/send on research agent
+        # Test SendMessage on research agent (v1.0 method names / enums)
         task = rpc_call(
             8001,
-            "tasks/send",
+            "SendMessage",
             {
                 "message": {
                     "messageId": "e2e-001",
-                    "role": "user",
+                    "role": "ROLE_USER",
                     "parts": [{"text": "docker"}],
                 }
             },
         )
-        assert task["status"]["state"] == "completed"
+        assert task["status"]["state"] == "TASK_STATE_COMPLETED"
         assert task["artifacts"]
-        print(f"[OK] research tasks/send: {task['id']}")
+        print(f"[OK] research SendMessage: {task['id']}")
 
         # Test orchestrator workflow
         with httpx.Client(trust_env=False, timeout=120) as client:

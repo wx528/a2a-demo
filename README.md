@@ -7,12 +7,12 @@
 - `orchestrator`：编排器，串联 research → writing 两个 agent
 - `web`：会议室演示（FastAPI + React + SSE），可视化 agent 协作过程
 
-所有 agent 都通过 **JSON-RPC 2.0** 暴露 A2A 协议接口：
-- `GET /.well-known/agent.json`：Agent Card（发现）
-- `POST /rpc`：JSON-RPC 入口，支持 `tasks/send`、`tasks/get`、`tasks/cancel`、`tasks/list`
-- `POST /rpc/stream`：SSE 流式入口，支持 `tasks/sendSubscribe`、`tasks/subscribe`
+所有 agent 都通过 **JSON-RPC 2.0** 暴露 A2A 协议接口（对齐 [A2A v1.0 规范](https://a2a-protocol.org/latest/specification/)）：
+- `GET /.well-known/agent-card.json`：Agent Card（发现，旧路径 `agent.json` 保留为兼容别名）
+- `POST /rpc`：JSON-RPC 入口，支持 `SendMessage`、`GetTask`、`CancelTask`、`ListTasks`（旧名 `tasks/send` 等保留为兼容别名）
+- `POST /rpc/stream`：SSE 流式入口，支持 `SendStreamingMessage`、`SubscribeToTask`
 
-> 本次改造重点：数据模型与 JSON-RPC 绑定对齐 [A2A v1.0 规范](https://a2a-protocol.org/latest/specification/)。Web 会议室也已改为通过 A2A JSON-RPC 调用远端 Agent。
+> 2026-09 更新：数据模型、方法名、枚举值、错误格式与时间戳精度已对齐现行 v1.0.0 规范（PascalCase 方法名、`TASK_STATE_*` / `ROLE_*` 枚举、`google.rpc.ErrorInfo` 错误、毫秒时间戳）。
 
 ---
 
@@ -116,8 +116,8 @@ docker compose up --build
 ### 2. 测试 Agent Card
 
 ```bash
-curl http://localhost:8001/.well-known/agent.json
-curl http://localhost:8002/.well-known/agent.json
+curl http://localhost:8001/.well-known/agent-card.json
+curl http://localhost:8002/.well-known/agent-card.json
 ```
 
 ### 3. 测试完整工作流
@@ -151,11 +151,11 @@ curl -X POST http://localhost:8001/rpc \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
-    "method": "tasks/send",
+    "method": "SendMessage",
     "params": {
       "message": {
         "messageId": "msg-001",
-        "role": "user",
+        "role": "ROLE_USER",
         "parts": [{"text": "kubernetes"}]
       }
     }
@@ -167,7 +167,7 @@ curl -X POST http://localhost:8001/rpc \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
-    "method": "tasks/get",
+    "method": "GetTask",
     "params": {"id": "TASK_ID_HERE"}
   }'
 
@@ -177,11 +177,11 @@ curl -N -X POST http://localhost:8001/rpc/stream \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,
-    "method": "tasks/sendSubscribe",
+    "method": "SendStreamingMessage",
     "params": {
       "message": {
         "messageId": "msg-002",
-        "role": "user",
+        "role": "ROLE_USER",
         "parts": [{"text": "a2a"}]
       }
     }
@@ -252,7 +252,7 @@ docker compose up -d
 
 - **后端**：FastAPI + SSE（Server-Sent Events）实时推送
 - **前端**：React（CDN 版）+ Tailwind CSS
-- **A2A 调用**：会议室中的每个 Agent 发言都通过 `POST /rpc` 发送 `tasks/send` 给 `research-agent` 或 `writing-agent`
+- **A2A 调用**：会议室中的每个 Agent 发言都通过 `POST /rpc` 发送 `SendMessage` 给 `research-agent` 或 `writing-agent`
 - **实时状态**：Agent 会显示"思考中"、"发言中"、"等待中"等状态
 
 ---

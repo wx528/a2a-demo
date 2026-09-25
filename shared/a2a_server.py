@@ -5,6 +5,7 @@ A2A JSON-RPC 2.0 服务端公共组件。
 
 import asyncio
 import json
+import re
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
@@ -44,8 +45,25 @@ class JSONRPCErrorException(Exception):
         self.error = error
 
 
+def _a2a_reason(error_name: str) -> str:
+    """将错误名转换为规范 reason：TaskNotFoundError -> TASK_NOT_FOUND。"""
+    base = error_name[:-5] if error_name.endswith("Error") else error_name
+    s = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", base)
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+    return s.upper()
+
+
 def _rpc_error(code: int, message: str, a2a_error: Optional[str] = None) -> JSONRPCError:
-    data = {"a2aError": a2a_error} if a2a_error else None
+    """构建 v1.0 规范错误：data 为 google.rpc.ErrorInfo（ProtoJSON Any 数组）。"""
+    data = None
+    if a2a_error:
+        data = [
+            {
+                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                "reason": _a2a_reason(a2a_error),
+                "domain": "a2a-protocol.org",
+            }
+        ]
     return JSONRPCError(code=code, message=message, data=data)
 
 
@@ -175,7 +193,7 @@ class A2AJSONRPCServer:
     # 方法处理器
     # -----------------------------------------------------------------------
 
-    def _handle_send_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_send_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
         req = SendMessageRequest.model_validate(params)
         return_immediately = False
         if req.configuration and req.configuration.return_immediately:
@@ -187,7 +205,8 @@ class A2AJSONRPCServer:
             asyncio.create_task(self._run_task_async(task.id))
             return self._task_to_dict(task)
 
-        self.process_task(task, self.store)
+        # 在线程中执行，避免阻塞事件循环（LLM 调用可能很慢）
+        await asyncio.to_thread(self.process_task, task, self.store)
         return self._task_to_dict(task)
 
     async def _run_task_async(self, task_id: str):
@@ -201,7 +220,7 @@ class A2AJSONRPCServer:
         task = self.store.get(req.id)
         if not task:
             raise JSONRPCErrorException(
-                _rpc_error(-32100, "Task not found", "TaskNotFoundError")
+                _rpc_error(-32001, "Task not found", "TaskNotFoundError")
             )
         return self._task_to_dict(task, req.history_length)
 
@@ -219,7 +238,7 @@ class A2AJSONRPCServer:
             TaskState.REJECTED,
         ):
             raise JSONRPCErrorException(
-                _rpc_error(-32101, "Task is not cancelable", "TaskNotCancelableError")
+                _rpc_error(-32002, "Task is not cancelable", "TaskNotCancelableError")
             )
         self.store.update_status(task, TaskState.CANCELED, "任务已取消")
         return self._task_to_dict(task)
@@ -240,9 +259,15 @@ class A2AJSONRPCServer:
         )
         return resp.model_dump(by_alias=True, exclude_none=True)
 
-    def _dispatch(self, method: str, params: Optional[Dict[str, Any]]) -> Any:
+    async def _dispatch(self, method: str, params: Optional[Dict[str, Any]]) -> Any:
         params = params or {}
         handlers = {
+            # v1.0 规范方法名（PascalCase，对齐 gRPC 命名）
+            "SendMessage": self._handle_send_message,
+            "GetTask": self._handle_get_task,
+            "CancelTask": self._handle_cancel_task,
+            "ListTasks": self._handle_list_tasks,
+            # v0.x 旧方法名兼容别名（过渡期保留）
             "tasks/send": self._handle_send_message,
             "tasks/get": self._handle_get_task,
             "tasks/cancel": self._handle_cancel_task,
@@ -252,7 +277,10 @@ class A2AJSONRPCServer:
             raise JSONRPCErrorException(
                 _rpc_error(-32601, f"Method not found: {method}")
             )
-        return handlers[method](params)
+        result = handlers[method](params)
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
 
     # -----------------------------------------------------------------------
     # FastAPI 应用构建
@@ -267,7 +295,8 @@ class A2AJSONRPCServer:
             allow_headers=["*"],
         )
 
-        @app.get("/.well-known/agent.json")
+        @app.get("/.well-known/agent-card.json")
+        @app.get("/.well-known/agent.json", include_in_schema=False)
         async def get_agent_card():
             return self.agent_card.model_dump(by_alias=True, exclude_none=True)
 
@@ -287,7 +316,7 @@ class A2AJSONRPCServer:
                 )
 
             try:
-                result = self._dispatch(rpc_req.method, rpc_req.params)
+                result = await self._dispatch(rpc_req.method, rpc_req.params)
                 return JSONResponse(
                     JSONRPCResponse(id=rpc_req.id, result=result).model_dump()
                 )
@@ -311,7 +340,7 @@ class A2AJSONRPCServer:
             method = rpc_req.method
 
             async def event_stream():
-                if method == "tasks/sendSubscribe":
+                if method in ("SendStreamingMessage", "tasks/sendSubscribe"):
                     send_req = SendMessageRequest.model_validate(rpc_req.params or {})
                     task = self.store.create(send_req.message)
                     yield self._sse_event(StreamResponse(task=task))
@@ -349,7 +378,7 @@ class A2AJSONRPCServer:
                                 )
                             )
                         )
-                elif method == "tasks/subscribe":
+                elif method in ("SubscribeToTask", "tasks/subscribe"):
                     sub_req = SubscribeToTaskRequest.model_validate(
                         rpc_req.params or {}
                     )
@@ -388,7 +417,7 @@ class A2AJSONRPCServer:
                 "agent": self.agent_card.name,
                 "protocol": "A2A",
                 "binding": "JSON-RPC 2.0",
-                "agent_card": f"{self.agent_card.supported_interfaces[0].url}/.well-known/agent.json",
+                "agent_card": f"{self.agent_card.supported_interfaces[0].url.replace('/rpc', '')}/.well-known/agent-card.json",
                 "rpc_endpoint": self.agent_card.supported_interfaces[0].url,
             }
 

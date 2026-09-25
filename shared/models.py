@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _to_camel(snake: str) -> str:
@@ -24,23 +24,45 @@ def _to_camel(snake: str) -> str:
 
 
 class TaskState(str, Enum):
-    """A2A Task 生命周期状态。"""
-    UNSPECIFIED = "unspecified"
-    SUBMITTED = "submitted"
-    WORKING = "working"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELED = "canceled"
-    INPUT_REQUIRED = "input-required"
-    REJECTED = "rejected"
-    AUTH_REQUIRED = "auth-required"
+    """A2A Task 生命周期状态（v1.0 规范：SCREAMING_SNAKE_CASE）。"""
+    UNSPECIFIED = "TASK_STATE_UNSPECIFIED"
+    SUBMITTED = "TASK_STATE_SUBMITTED"
+    WORKING = "TASK_STATE_WORKING"
+    COMPLETED = "TASK_STATE_COMPLETED"
+    FAILED = "TASK_STATE_FAILED"
+    CANCELED = "TASK_STATE_CANCELED"
+    INPUT_REQUIRED = "TASK_STATE_INPUT_REQUIRED"
+    REJECTED = "TASK_STATE_REJECTED"
+    AUTH_REQUIRED = "TASK_STATE_AUTH_REQUIRED"
 
 
 class Role(str, Enum):
-    """消息发送者角色。"""
-    UNSPECIFIED = "unspecified"
-    USER = "user"
-    AGENT = "agent"
+    """消息发送者角色（v1.0 规范：SCREAMING_SNAKE_CASE）。"""
+    UNSPECIFIED = "ROLE_UNSPECIFIED"
+    USER = "ROLE_USER"
+    AGENT = "ROLE_AGENT"
+
+
+_LEGACY_TASK_STATE = {e.name: e for e in TaskState}
+_LEGACY_TASK_STATE.update(
+    {
+        "unspecified": TaskState.UNSPECIFIED,
+        "submitted": TaskState.SUBMITTED,
+        "working": TaskState.WORKING,
+        "completed": TaskState.COMPLETED,
+        "failed": TaskState.FAILED,
+        "canceled": TaskState.CANCELED,
+        "input-required": TaskState.INPUT_REQUIRED,
+        "rejected": TaskState.REJECTED,
+        "auth-required": TaskState.AUTH_REQUIRED,
+    }
+)
+
+_LEGACY_ROLE = {
+    "unspecified": Role.UNSPECIFIED,
+    "user": Role.USER,
+    "agent": Role.AGENT,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +115,14 @@ class Message(BaseModel):
     extensions: Optional[List[str]] = None
     reference_task_ids: Optional[List[str]] = None
 
+    @field_validator("role", mode="before")
+    @classmethod
+    def _tolerate_legacy_role(cls, v):
+        """兼容 v0.x 的小写 role 值（如 "user"），自动映射为 v1.0 枚举。"""
+        if isinstance(v, str) and v in _LEGACY_ROLE:
+            return _LEGACY_ROLE[v]
+        return v
+
 
 class Artifact(BaseModel):
     """任务输出产物。"""
@@ -126,6 +156,16 @@ class TaskStatus(BaseModel):
     state: TaskState
     message: Optional[Message] = None
     timestamp: Optional[str] = None
+
+    @field_validator("state", mode="before")
+    @classmethod
+    def _tolerate_legacy_state(cls, v):
+        """兼容 v0.x 的小写 state 值（如 "completed"），自动映射为 v1.0 枚举。"""
+        if isinstance(v, str):
+            return _LEGACY_TASK_STATE.get(v, v)
+        if isinstance(v, TaskState):
+            return _LEGACY_TASK_STATE.get(v.name, v)
+        return v
 
 
 class Task(BaseModel):
@@ -311,7 +351,7 @@ class SendMessageConfiguration(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    """tasks/send 的请求参数。"""
+    """SendMessage（v1.0 方法名，旧名 tasks/send 保留为别名）的请求参数。"""
     model_config = ConfigDict(
         alias_generator=_to_camel,
         populate_by_name=True,
@@ -406,7 +446,8 @@ class JSONRPCRequest(BaseModel):
 class JSONRPCError(BaseModel):
     code: int
     message: str
-    data: Optional[Dict[str, Any]] = None
+    # v1.0 规范：data 为 ProtoJSON Any 数组（通常含 google.rpc.ErrorInfo）
+    data: Optional[Any] = None
 
 
 class JSONRPCResponse(BaseModel):
@@ -445,8 +486,8 @@ class StreamResponse(BaseModel):
 
 
 def utc_now_iso() -> str:
-    """返回 ISO 8601 UTC 时间字符串。"""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """返回 ISO 8601 UTC 时间字符串（v1.0 规范：毫秒精度）。"""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def text_part(text: str, media_type: str = "text/plain") -> Part:
