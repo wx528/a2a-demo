@@ -308,6 +308,21 @@ Personalities: `socrates`, `hume`, `kant`, `nietzsche`,
 `skeptic_engineer`, `vc`. Search works out of the box via DuckDuckGo;
 set `SEARCH_PROVIDER=tavily` + `SEARCH_API_KEY` for higher quality.
 
+Sample transcript (abridged):
+
+```markdown
+## Turn 1 · 苏格拉底（PRO）
+
+我们要先问：所谓"取代"，究竟指任务被自动化，还是指人的价值被消除？
+历史数据显示，ATM 普及后美国银行柜员岗位不降反升 [来源1](https://www.aei.org/...)。
+但请注意：这是相关性陈述，因果仍是推演……
+
+## Judge Verdict · 裁判
+
+正方最强论据来自就业结构数据 [来源1](https://www.aei.org/...)，
+反方对"任务替代 ≠ 岗位替代"的区分未被任何来源直接支撑，属于未查证推演……
+```
+
 ---
 
 ## Extending

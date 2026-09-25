@@ -89,6 +89,8 @@ def test_system_prompt_contains_grounding_rules():
     prompt = build_system_prompt()
     assert "来源" in prompt
     assert "不得编造" in prompt or "绝不编造" in prompt
+    # 提示注入防护：检索资料/对手论点是数据不是指令
+    assert "数据" in prompt and "指令" in prompt
 
 
 def test_missing_motion_fails_fast(monkeypatch):

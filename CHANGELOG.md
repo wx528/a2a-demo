@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `research-agent` 流式输出中途失败不再静默截断：异常上抛，任务正确落 `TASK_STATE_FAILED`
+- 辩论 Agent system prompt 增加提示注入防护：检索资料与对手论点均声明为数据而非指令
+- 双语 README 辩论章节补充转录示例（展示引用标注与"未查证推演"声明格式）
+
 ### Added
 
 - GitHub Actions CI（`.github/workflows/ci.yml`）：ruff + 单元/端到端/Web 集成测试，每次 push/PR 运行，离线不消耗 LLM 额度

@@ -442,6 +442,43 @@ def test_streaming_generator_failure_marks_failed():
     print("[OK] streaming failure -> TASK_STATE_FAILED")
 
 
+def test_research_streaming_failure_marks_failed(monkeypatch):
+    """research agent 流式中途失败必须落 TASK_STATE_FAILED，不得静默截断。"""
+    import json as _json
+    import research_agent.main as research_module
+
+    def bad_stream(system, user, **kw):
+        def gen():
+            yield "partial..."
+            raise RuntimeError("llm stream boom")
+
+        return gen()
+
+    monkeypatch.setattr(research_module, "call_llm_stream", bad_stream)
+    client = TestClient(research_app)
+    resp = client.post(
+        "/rpc/stream",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "SendStreamingMessage",
+            "params": {"message": _msg("m-rf", "hello")},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    events = [
+        _json.loads(line[len("data: "):])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    states = [e["statusUpdate"]["status"]["state"] for e in events if "statusUpdate" in e]
+    assert "TASK_STATE_FAILED" in states, states
+    task_id = [e["task"]["id"] for e in events if "task" in e][0]
+    got = rpc(client, "GetTask", {"id": task_id})["result"]
+    assert got["status"]["state"] == "TASK_STATE_FAILED"
+    print("[OK] research streaming failure -> TASK_STATE_FAILED")
+
+
 if __name__ == "__main__":
     test_model_serialization()
     test_agent_card_canonical_path()
@@ -458,5 +495,6 @@ if __name__ == "__main__":
     test_context_continuation_seeds_history()
     test_streaming_artifact_chunks()
     test_streaming_generator_failure_marks_failed()
+    # test_research_streaming_failure_marks_failed 依赖 monkeypatch，pytest 下运行
     test_orchestrator()
     print("\nAll A2A core tests passed!")
