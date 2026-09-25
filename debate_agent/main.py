@@ -169,13 +169,10 @@ def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
     if deltas is None:
         yield _NO_LLM_FALLBACK
         return
-    try:
-        for delta in deltas:
-            if delta:
-                emitted = True
-                yield delta
-    except Exception:
-        return
+    for delta in deltas:
+        if delta:
+            emitted = True
+            yield delta
     if not emitted:
         yield _NO_LLM_FALLBACK
 

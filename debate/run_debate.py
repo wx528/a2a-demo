@@ -20,6 +20,15 @@ DEFAULT_AGENT_URL = "http://localhost:8003"
 RETRIES = 1
 
 
+class DebateAborted(RuntimeError):
+    """重试后仍失败而中止；携带已完成部分的转录（可能为空串）。"""
+
+    def __init__(self, reason: str, transcript_so_far: str = ""):
+        super().__init__(reason)
+        self.reason = reason
+        self.transcript_so_far = transcript_so_far
+
+
 def artifact_text(task: dict) -> str:
     artifacts = task.get("artifacts") or []
     if not artifacts:
@@ -53,6 +62,23 @@ async def send_with_retry(client, message: str) -> str:
     raise RuntimeError(f"debate-agent failed after retry: {last_error}")
 
 
+def _render_transcript(motion, pro, con, judge, rounds, turns, verdict=None) -> str:
+    """按最终转录的格式渲染；无任何已完成内容时返回空串。"""
+    if not turns and verdict is None:
+        return ""
+    lines = [
+        f"# 辩论：{motion}\n",
+        f"- 正方：{pro['name']}",
+        f"- 反方：{con['name']}",
+        f"- 轮数：{rounds}\n",
+    ]
+    for i, (name, stance, text) in enumerate(turns, 1):
+        lines.append(f"## 第 {i} 手 · {name}（{stance}）\n\n{text}\n")
+    if verdict is not None:
+        lines.append(f"## 裁判总结 · {judge['name']}\n\n{verdict}\n")
+    return "\n".join(lines)
+
+
 async def run_debate_async(motion, pro_id, con_id, rounds, agent_url) -> str:
     pro = get_persona(pro_id)
     con = get_persona(con_id)
@@ -60,23 +86,32 @@ async def run_debate_async(motion, pro_id, con_id, rounds, agent_url) -> str:
     client = A2AJSONRPCClient(agent_url)
 
     turns = []  # (persona_name, stance, argument_text)
+
+    async def _send(message: str) -> str:
+        try:
+            return await send_with_retry(client, message)
+        except RuntimeError as e:
+            raise DebateAborted(
+                str(e),
+                _render_transcript(motion, pro, con, judge, rounds, turns),
+            ) from e
+
     last_con = ""
     for r in range(1, rounds + 1):
         opponent_for_pro = last_con
-        pro_text = await send_with_retry(
-            client, build_turn_message(motion, pro, "正方", opponent_for_pro)
+        pro_text = await _send(
+            build_turn_message(motion, pro, "正方", opponent_for_pro)
         )
         turns.append((pro["name"], "正方", pro_text))
 
-        con_text = await send_with_retry(
-            client, build_turn_message(motion, con, "反方", pro_text)
+        con_text = await _send(
+            build_turn_message(motion, con, "反方", pro_text)
         )
         turns.append((con["name"], "反方", con_text))
         last_con = con_text
 
     both = "\n\n---\n\n".join(f"{n}（{s}）：\n{t}" for n, s, t in turns)
-    verdict = await send_with_retry(
-        client,
+    verdict = await _send(
         (
             f"[辩题/MOTION] {motion}\n"
             f"[角色/PERSONA] {judge['name']}（风格：{judge['style']}）\n"
@@ -85,17 +120,22 @@ async def run_debate_async(motion, pro_id, con_id, rounds, agent_url) -> str:
         ),
     )
 
-    lines = [f"# 辩论：{motion}\n", f"- 正方：{pro['name']}", f"- 反方：{con['name']}", f"- 轮数：{rounds}\n"]
-    for i, (name, stance, text) in enumerate(turns, 1):
-        lines.append(f"## 第 {i} 手 · {name}（{stance}）\n\n{text}\n")
-    lines.append(f"## 裁判总结 · {judge['name']}\n\n{verdict}\n")
-    return "\n".join(lines)
+    return _render_transcript(motion, pro, con, judge, rounds, turns, verdict)
 
 
 def run_debate(motion, pro_id, con_id, rounds, agent_url) -> str:
     return asyncio.run(
         run_debate_async(motion, pro_id, con_id, rounds, agent_url)
     )
+
+
+def _emit_transcript(transcript: str, out_path: Optional[str]) -> None:
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(transcript)
+        print(f"transcript written to {out_path}", file=sys.stderr)
+    else:
+        print(transcript)
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -118,15 +158,13 @@ def main(argv: Optional[list] = None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
     except RuntimeError as e:
+        partial = getattr(e, "transcript_so_far", "")
+        if partial:
+            _emit_transcript(partial, args.out)
         print(f"error: {e}", file=sys.stderr)
         return 1
 
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            f.write(transcript)
-        print(f"transcript written to {args.out}", file=sys.stderr)
-    else:
-        print(transcript)
+    _emit_transcript(transcript, args.out)
     return 0
 
 

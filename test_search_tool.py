@@ -39,6 +39,25 @@ def test_never_raises_on_provider_error(monkeypatch):
     assert search_tool.web_search("anything") == []
 
 
+def test_non_numeric_max_results_env_returns_empty(monkeypatch):
+    monkeypatch.setenv("SEARCH_MAX_RESULTS", "abc")
+    monkeypatch.setattr(search_tool, "_search_duckduckgo", lambda q, max_results: [])
+    assert search_tool.web_search("x") == []
+
+
+def test_max_results_env_caps_provider_limit(monkeypatch):
+    captured = {}
+
+    def fake(query, max_results):
+        captured["max_results"] = max_results
+        return []
+
+    monkeypatch.setenv("SEARCH_MAX_RESULTS", "1")
+    monkeypatch.setattr(search_tool, "_search_duckduckgo", fake)
+    search_tool.web_search("q", max_results=5)
+    assert captured["max_results"] == 1
+
+
 def test_dedupe_and_cap(monkeypatch):
     def fake(query, max_results):
         return [

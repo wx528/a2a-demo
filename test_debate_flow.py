@@ -3,6 +3,8 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from debate import run_debate
@@ -17,6 +19,20 @@ class StubClient:
     async def send_message(self, text):
         self.sent.append(text)
         return {"artifacts": [{"parts": [{"text": f"ARG#{len(self.sent)}"}]}]}
+
+
+class HalfwayClient:
+    """第 1 手成功，其后全部失败：用于验证中止时保留部分转录。"""
+
+    def __init__(self, url):
+        self.url = url
+        self.calls = 0
+
+    async def send_message(self, text):
+        self.calls += 1
+        if self.calls == 1:
+            return {"artifacts": [{"parts": [{"text": "PRO-OK"}]}]}
+        raise RuntimeError("agent down")
 
 
 def test_personas_include_judge_and_philosophers():
@@ -63,10 +79,33 @@ def test_retry_once_then_abort(monkeypatch):
             self.calls += 1
             raise RuntimeError("agent down")
 
-    monkeypatch.setattr(run_debate, "A2AJSONRPCClient", lambda url: FlakyClient(url))
-    try:
+    flaky = FlakyClient("http://x")
+    monkeypatch.setattr(run_debate, "A2AJSONRPCClient", lambda url: flaky)
+    with pytest.raises(run_debate.DebateAborted) as excinfo:
         run_debate.run_debate("辩题", "socrates", "hume", rounds=1, agent_url="http://x")
-        raised = False
-    except RuntimeError:
-        raised = True
-    assert raised
+    assert flaky.calls == run_debate.RETRIES + 1, "turn must retry once before abort"
+    assert excinfo.value.transcript_so_far == "", "no turns completed -> empty partial"
+    assert "agent down" in excinfo.value.reason
+
+
+def test_abort_carries_partial_transcript(monkeypatch):
+    halfway = HalfwayClient("http://x")
+    monkeypatch.setattr(run_debate, "A2AJSONRPCClient", lambda url: halfway)
+    with pytest.raises(run_debate.DebateAborted) as excinfo:
+        run_debate.run_debate("辩题", "socrates", "hume", rounds=1, agent_url="http://x")
+    partial = excinfo.value.transcript_so_far
+    assert "PRO-OK" in partial, "completed turn must survive in partial transcript"
+    assert "苏格拉底" in partial and "正方" in partial
+    assert "裁判总结" not in partial, "judge verdict must be absent on abort"
+
+
+def test_main_abort_prints_partial_and_returns_1(monkeypatch, capsys):
+    monkeypatch.setattr(run_debate, "A2AJSONRPCClient", lambda url: HalfwayClient("http://x"))
+    rc = run_debate.main(
+        ["辩题", "--pro", "socrates", "--con", "hume",
+         "--rounds", "1", "--agent-url", "http://x"]
+    )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "PRO-OK" in captured.out, "partial transcript must be printed to stdout"
+    assert "error:" in captured.err and "agent down" in captured.err

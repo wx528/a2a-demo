@@ -19,7 +19,10 @@ def web_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     """检索并返回 [{"title", "url", "snippet"}]，按 URL 去重。失败返回 []。"""
     if not query or not query.strip():
         return []
-    cap = int(os.getenv("SEARCH_MAX_RESULTS", "5") or 5)
+    try:
+        cap = int(os.getenv("SEARCH_MAX_RESULTS", "5") or 5)
+    except (TypeError, ValueError):
+        cap = 5
     max_results = min(max_results, cap) if cap > 0 else max_results
 
     provider = os.getenv("SEARCH_PROVIDER", "duckduckgo").lower()

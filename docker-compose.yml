@@ -49,6 +49,7 @@ services:
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - SEARCH_PROVIDER=${SEARCH_PROVIDER:-duckduckgo}
       - SEARCH_API_KEY=${SEARCH_API_KEY:-}
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-5}
       - TASK_DB=/data/tasks.db
     volumes:
       - debate-agent-data:/data

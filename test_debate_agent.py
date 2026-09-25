@@ -1,5 +1,6 @@
 """debate_agent 协议与行为测试（TestClient，无真实端口）。"""
 
+import json
 import os
 import sys
 
@@ -32,6 +33,39 @@ def _send(client, text):
     rpc_resp = resp.json()
     assert rpc_resp.get("error") is None, rpc_resp
     return rpc_resp["result"]
+
+
+def _get_task(client, task_id):
+    rpc_resp = _rpc(client, "GetTask", {"id": task_id})
+    assert rpc_resp.get("error") is None, rpc_resp
+    return rpc_resp["result"]
+
+
+def _rpc(client, method, params):
+    resp = client.post(
+        "/rpc",
+        json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _stream_events(client, text):
+    resp = client.post(
+        "/rpc/stream",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "SendStreamingMessage",
+            "params": {"message": _msg(text)},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return [
+        json.loads(line[len("data: "):])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
 
 
 INPUT = (
@@ -95,10 +129,6 @@ def test_sources_flow_into_argument(monkeypatch):
         lambda q, max_results=5: [{"title": "t", "url": "https://real.com", "snippet": "s"}],
     )
     monkeypatch.setattr(m, "call_llm", fake_llm)
-    monkeypatch.setattr(
-        m, "call_llm_stream",
-        lambda system, user, **kw: iter(["chunk"]),
-    )
     client = TestClient(app)
     task = _send(client, INPUT)
     text = task["artifacts"][0]["parts"][0]["text"]
@@ -111,3 +141,57 @@ def test_agent_card_declares_debate_skill():
     card = client.get("/.well-known/agent-card.json").json()
     assert card["name"] == "debate-agent"
     assert card["skills"][0]["id"] == "debate"
+
+
+def test_streaming_success_assembles_chunks(monkeypatch):
+    import debate_agent.main as m
+
+    monkeypatch.setattr(
+        m, "web_search",
+        lambda q, max_results=5: [{"title": "t", "url": "https://real.com", "snippet": "s"}],
+    )
+    monkeypatch.setattr(m, "call_llm", lambda *a, **k: None)
+    monkeypatch.setattr(
+        m, "call_llm_stream",
+        lambda system, user, **kw: iter(["Hello ", "debate"]),
+    )
+    client = TestClient(app)
+    events = _stream_events(client, INPUT)
+
+    chunks = [e["artifactUpdate"] for e in events if "artifactUpdate" in e]
+    assembled = "".join(c["artifact"]["parts"][0]["text"] for c in chunks)
+    assert assembled == "Hello debate", assembled
+    assert chunks[-1]["lastChunk"] is True, "final chunk must set lastChunk"
+
+    states = [e["statusUpdate"]["status"]["state"] for e in events if "statusUpdate" in e]
+    assert "TASK_STATE_COMPLETED" in states, states
+
+    task_id = [e["task"]["id"] for e in events if "task" in e][0]
+    got = _get_task(client, task_id)
+    assert got["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert got["artifacts"][0]["parts"][0]["text"] == "Hello debate"
+
+
+def test_streaming_midstream_failure_marks_failed(monkeypatch):
+    import debate_agent.main as m
+
+    def bad_stream(system, user, **kw):
+        def gen():
+            yield "chunk-one"
+            raise RuntimeError("stream boom")
+
+        return gen()
+
+    monkeypatch.setattr(m, "web_search", lambda q, max_results=5: [])
+    monkeypatch.setattr(m, "call_llm", lambda *a, **k: None)
+    monkeypatch.setattr(m, "call_llm_stream", bad_stream)
+    client = TestClient(app)
+    events = _stream_events(client, INPUT)
+
+    states = [e["statusUpdate"]["status"]["state"] for e in events if "statusUpdate" in e]
+    assert "TASK_STATE_FAILED" in states, states
+
+    task_id = [e["task"]["id"] for e in events if "task" in e][0]
+    got = _get_task(client, task_id)
+    assert got["status"]["state"] == "TASK_STATE_FAILED"
+    assert "stream boom" in got["status"]["message"]["parts"][0]["text"]
