@@ -105,6 +105,10 @@ motion -> PRO opening -> CON rebuttal -> PRO counter -> ... (rounds N)
        -> JUDGE verdict (weighs cited evidence on both sides)
 ```
 
+- One round = one PRO turn followed by one CON turn. Round 1's PRO turn is the
+  opening statement; later PRO/CON turns are rebuttals. `--rounds N` thus yields
+  `2N` debater turns, then the judge verdict.
+
 - Each turn sends the opponent's previous argument (with citations) in
   OPPONENT_ARGUMENTS.
 - All calls go through `A2AJSONRPCClient` (real A2A traffic, exercises the stack).
