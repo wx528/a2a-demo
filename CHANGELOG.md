@@ -15,6 +15,9 @@
 - Orchestrator 动态发现：启动时通过 `/.well-known/agent-card.json` 拉取 Agent Card 自动注册（`AGENT_URLS` 环境变量，逗号分隔），支持按 card 名称 / 短名 / skill id 解析，`POST /agents/refresh` 可运行时重新发现，无需重启；旧版成对 URL 环境变量保留为回退
 - 真流式输出：`A2AJSONRPCServer` 新增可选 `process_task_stream` 生成器参数，`SendStreamingMessage` 通过线程 + 队列桥接逐块推送 `TaskArtifactUpdateEvent`（`append` / `lastChunk` 语义，单一 `artifactId`）；新增 `call_llm_stream` 流式 LLM 客户端；`research-agent` 已接入（card 声明 `streaming: true`），`writing-agent` 保持非流式以示范能力协商
 - SQLite 任务持久化：新增 `SqliteTaskStore`（write-through + 重启加载），设置 `TASK_DB` 环境变量即启用；docker compose 为两个 agent 挂载 named volume 并默认开启
+- 人格辩论 Demo：`debate-agent`（检索资料 + 引用论证，无资料明说绝不编造）与 CLI 编排器 `debate/run_debate.py`（苏格拉底/休谟/康德/尼采/怀疑论工程师/风险投资人 + 中立裁判，多轮对抗 + 判定）
+- 搜索工具层 `shared/search_tool.py`：默认 DuckDuckGo 免 key，可选 Tavily（`SEARCH_PROVIDER`/`SEARCH_API_KEY`），任何失败降级为空结果
+- docker-compose 新增 `debate-agent` 服务（8003 端口，SQLite 持久化卷）
 
 ### Fixed
 

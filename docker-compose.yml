@@ -35,6 +35,26 @@ services:
     networks:
       - a2a-network
 
+  debate-agent:
+    build:
+      context: .
+      dockerfile: debate_agent/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - PORT=8003
+      - HOST=debate-agent
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-duckduckgo}
+      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
+      - TASK_DB=/data/tasks.db
+    volumes:
+      - debate-agent-data:/data
+    networks:
+      - a2a-network
+
   orchestrator:
     build:
       context: .
@@ -43,12 +63,13 @@ services:
       - "8000:8000"
     environment:
       - PORT=8000
-      - AGENT_URLS=${AGENT_URLS:-http://research-agent:8001,http://writing-agent:8002}
+      - AGENT_URLS=${AGENT_URLS:-http://research-agent:8001,http://writing-agent:8002,http://debate-agent:8003}
       - RESEARCH_AGENT_URL=http://research-agent:8001
       - WRITING_AGENT_URL=http://writing-agent:8002
     depends_on:
       - research-agent
       - writing-agent
+      - debate-agent
     networks:
       - a2a-network
 
@@ -78,3 +99,4 @@ networks:
 volumes:
   research-agent-data:
   writing-agent-data:
+  debate-agent-data:

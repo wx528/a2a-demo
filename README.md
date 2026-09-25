@@ -38,10 +38,16 @@ All agents expose the A2A protocol over **JSON-RPC 2.0** (aligned with the [A2A 
 ├── writing_agent/          # Writing agent
 │   ├── main.py
 │   └── Dockerfile
+├── debate_agent/           # Persona debate agent
+│   ├── main.py
+│   └── Dockerfile
 ├── orchestrator/           # Orchestrator with dynamic agent discovery
 │   ├── main.py
 │   ├── registry.py         # AgentRegistry: discovery via Agent Card
 │   └── Dockerfile
+├── debate/                 # Persona debate CLI orchestrator
+│   ├── personas.py         # Persona library (socrates / hume / kant / ...)
+│   └── run_debate.py       # Multi-round debate + judge verdict
 ├── web/                    # Meeting room web demo
 │   ├── main.py
 │   ├── db.py               # SQLite persistence for meetings
@@ -281,6 +287,26 @@ Visit: http://localhost:8080
 - **Frontend**: React (CDN build) + Tailwind CSS
 - **A2A calls**: every agent turn goes through `POST /rpc` `SendMessage` to `research-agent` / `writing-agent`
 - **Live status**: agents show "thinking", "speaking", "waiting" states
+
+---
+
+## Persona Debate Demo
+
+A fact-grounded debate between personas (philosophers and modern archetypes).
+Each turn: the `debate-agent` retrieves web sources, then argues with inline
+citations; missing evidence is declared, never fabricated.
+
+```bash
+# start the debate agent (or docker compose up)
+uv run python debate_agent/main.py &
+
+uv run python debate/run_debate.py "Will AI replace most jobs?" \
+    --pro socrates --con hume --rounds 2
+```
+
+Personalities: `socrates`, `hume`, `kant`, `nietzsche`,
+`skeptic_engineer`, `vc`. Search works out of the box via DuckDuckGo;
+set `SEARCH_PROVIDER=tavily` + `SEARCH_API_KEY` for higher quality.
 
 ---
 

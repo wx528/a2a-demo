@@ -127,6 +127,20 @@ def main():
             f"article_len={len(result['article'])}"
         )
 
+        # Test debate demo (fallback mode, protocol correctness)
+        procs.append(start_service("debate", 8003, "debate_agent/main.py"))
+        assert wait_for_ready("http://localhost:8003/"), "debate agent not ready"
+
+        from debate.run_debate import run_debate as run_debate_lib
+
+        transcript = run_debate_lib(
+            "AI 会取代大多数工作吗", "socrates", "hume",
+            rounds=1, agent_url="http://localhost:8003",
+        )
+        assert "苏格拉底" in transcript and "休谟" in transcript
+        assert "裁判总结" in transcript
+        print("[OK] debate demo (1 round, fallback mode)")
+
         print("\nAll e2e tests passed!")
     finally:
         for p in procs:

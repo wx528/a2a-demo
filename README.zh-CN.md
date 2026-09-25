@@ -37,10 +37,16 @@
 ├── writing_agent/          # 写作 agent
 │   ├── main.py
 │   └── Dockerfile
+├── debate_agent/           # 人格辩论 agent
+│   ├── main.py
+│   └── Dockerfile
 ├── orchestrator/           # 编排器（动态发现）
 │   ├── main.py
 │   ├── registry.py         # AgentRegistry：基于 Agent Card 的发现注册表
 │   └── Dockerfile
+├── debate/                 # 辩论 Demo CLI 编排器
+│   ├── personas.py         # 人格库（苏格拉底 / 休谟 / 康德 ……）
+│   └── run_debate.py       # 多轮对抗辩论 + 裁判判定
 ├── web/                    # 会议室 Web 演示
 │   ├── main.py
 │   ├── db.py               # 会议 SQLite 持久化
@@ -280,6 +286,25 @@ docker compose up -d
 - **前端**：React（CDN 版）+ Tailwind CSS
 - **A2A 调用**：会议室中的每个 Agent 发言都通过 `POST /rpc` 发送 `SendMessage` 给 `research-agent` 或 `writing-agent`
 - **实时状态**：Agent 会显示"思考中"、"发言中"、"等待中"等状态
+
+---
+
+## 人格辩论 Demo
+
+人格化角色（哲学家与现代原型）之间的事实性辩论。每一轮：`debate-agent`
+先检索网络资料，再带内联引用进行论证；缺少资料时会明说，绝不编造。
+
+```bash
+# 启动辩论 agent（或 docker compose up）
+uv run python debate_agent/main.py &
+
+uv run python debate/run_debate.py "AI 会取代大多数工作吗" \
+    --pro socrates --con hume --rounds 2
+```
+
+可选人格：`socrates`、`hume`、`kant`、`nietzsche`、
+`skeptic_engineer`、`vc`。搜索默认走 DuckDuckGo，开箱即用；
+设置 `SEARCH_PROVIDER=tavily` + `SEARCH_API_KEY` 可获得更高质量的结果。
 
 ---
 
