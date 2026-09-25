@@ -139,6 +139,28 @@ def test_streaming_has_multiple_chunks():
     print(f"[OK] streaming: {chunk_count} chunks, lastChunk + completed")
 
 
+def test_debate_1round_with_grounding():
+    """1 轮真实辩论：协议走通 + grounding 契约成立（有引用，或明确声明未查证）。"""
+    from debate.run_debate import run_debate as run_debate_lib
+
+    transcript = run_debate_lib(
+        "AI 会取代大多数工作吗", "socrates", "hume",
+        rounds=1, agent_url="http://localhost:8003",
+    )
+    assert FALLBACK_MARKER not in transcript, transcript[:200]
+    for needle in ["苏格拉底", "休谟", "裁判总结"]:
+        assert needle in transcript, f"missing {needle} in transcript"
+
+    # grounding 契约：要么出现真实引用链接，要么包含"未查证/未找到可靠来源"声明
+    has_citation = "](http" in transcript
+    has_declaration = ("未查证" in transcript) or ("未找到可靠来源" in transcript)
+    assert has_citation or has_declaration, (
+        "transcript has neither citations nor missing-evidence declaration"
+    )
+    marker = "citations" if has_citation else "missing-evidence declaration"
+    print(f"[OK] debate 1 round ({marker}), transcript_len={len(transcript)}")
+
+
 def test_orchestrator_workflow():
     with httpx.Client(trust_env=False, timeout=300) as client:
         r = client.post(
@@ -164,6 +186,7 @@ def main():
     try:
         procs.append(start_service("research", 8001, "research_agent/main.py"))
         procs.append(start_service("writing", 8002, "writing_agent/main.py"))
+        procs.append(start_service("debate", 8003, "debate_agent/main.py"))
         procs.append(
             start_service(
                 "orchestrator",
@@ -178,12 +201,14 @@ def main():
         for url in [
             "http://localhost:8001/",
             "http://localhost:8002/",
+            "http://localhost:8003/",
             "http://localhost:8000/",
         ]:
             assert wait_for_ready(url), f"service not ready: {url}"
 
         test_blocking_send_returns_real_llm_output()
         test_streaming_has_multiple_chunks()
+        test_debate_1round_with_grounding()
         test_orchestrator_workflow()
         print("\nAll LLM smoke tests passed!")
         return 0
