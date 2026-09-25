@@ -93,10 +93,9 @@
 - 添加 `README.md` 项目文档
 - 添加 `CHANGELOG.md`
 
-<!-- 本项目为私有仓库，以下链接为占位符；如需公开，可替换为实际代码托管地址 -->
-[Unreleased]: #
-[0.4.0]: #
-[0.3.0]: #
-[0.2.1]: #
-[0.2.0]: #
-[0.1.0]: #
+[Unreleased]: https://github.com/wx528/a2a-demo/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/wx528/a2a-demo/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/wx528/a2a-demo/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/wx528/a2a-demo/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/wx528/a2a-demo/compare/v0.1.1...v0.2.0
+[0.1.0]: https://github.com/wx528/a2a-demo/releases/tag/v0.1.0
