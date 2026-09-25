@@ -64,6 +64,15 @@ def test_citation_coverage_math():
     assert metrics.citation_coverage([]) == (0.0, 0, 0)
 
 
+def test_citation_coverage_union_not_double_counted():
+    both = "论点 [来源](https://u.com)，另有一段（未查证推演）。"
+    neither = "纯观点，无引用无声明。"
+    turns = [{"header": "h1", "text": both}, {"header": "h2", "text": neither}]
+    rate, cited, declared = metrics.citation_coverage(turns)
+    assert rate == 0.5  # 同轮引用+声明只算一次，未覆盖轮不计
+    assert cited == 1 and declared == 1
+
+
 def test_turn_citations_and_declaration():
     assert metrics.turn_citations("a [x](https://u.com) b [y](http://v.cn)") == [
         "https://u.com", "http://v.cn",
@@ -72,6 +81,13 @@ def test_turn_citations_and_declaration():
     assert metrics.has_declaration("（未查证推演）")
     assert metrics.has_declaration("未能检索到可靠外部来源")
     assert not metrics.has_declaration("fully cited")
+
+
+def test_markers_cover_agent_no_sources_note():
+    from debate_agent.main import _NO_SOURCES_NOTE
+    from evals.quality.metrics import DECLARATION_MARKERS
+    assert any(m in _NO_SOURCES_NOTE for m in DECLARATION_MARKERS), \
+        "debate agent's no-sources note no longer matches any declaration marker"
 
 
 def test_liveness_with_mock_transport():

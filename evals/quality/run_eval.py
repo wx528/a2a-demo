@@ -99,6 +99,24 @@ def eval_motion(motion: dict, args, judge: Judge) -> dict:
     return row
 
 
+def run_motions(motions: List[dict], args, judge: Judge) -> List[dict]:
+    """逐题评测；单题失败记录错误行并继续，不中断整个评测。"""
+    rows: List[dict] = []
+    for i, motion in enumerate(motions, 1):
+        print(f"[{i}/{len(motions)}] {motion['id']}: {motion['text']}", file=sys.stderr)
+        try:
+            rows.append(eval_motion(motion, args, judge))
+        except Exception as e:
+            print(f"error: motion {motion['id']} failed: {e}", file=sys.stderr)
+            rows.append({
+                "id": motion["id"],
+                "motion": motion["text"],
+                "trap": bool(motion.get("trap")),
+                "error": str(e)[:200],
+            })
+    return rows
+
+
 def aggregate(rows: List[dict]) -> dict:
     def mean(key: str) -> Optional[float]:
         vals = [r[key] for r in rows if r.get(key) is not None]
@@ -140,7 +158,7 @@ def build_markdown(meta: dict, summary: dict, rows: List[dict]) -> str:
               "|----|------|------|------|----------|----------|----------|------|----------|"]
     for r in rows:
         lines.append(
-            f"| {r['id']} | {r['motion'][:24]} | {'是' if r.get('trap') else ''} "
+            f"| {r.get('id')} | {(r.get('motion') or '')[:24]} | {'是' if r.get('trap') else ''} "
             f"| {r.get('turns')} | {r.get('citation_coverage')} | {r.get('link_liveness')} "
             f"| {r.get('claim_support_rate')} | {r.get('persona_adherence')} | {r.get('trap_honesty', '')} |"
         )
@@ -200,11 +218,8 @@ def main() -> int:
         print("warning: judge unavailable (no keys) — deterministic metrics only", file=sys.stderr)
 
     started = time.time()
-    rows = []
     try:
-        for i, motion in enumerate(motions, 1):
-            print(f"[{i}/{len(motions)}] {motion['id']}: {motion['text']}", file=sys.stderr)
-            rows.append(eval_motion(motion, args, judge))
+        rows = run_motions(motions, args, judge)
     finally:
         if proc:
             proc.terminate()

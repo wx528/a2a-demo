@@ -34,12 +34,19 @@ def has_declaration(text: str) -> bool:
 
 
 def citation_coverage(turns: List[Dict[str, str]]) -> Tuple[float, int, int]:
-    """返回 (覆盖率, 有引用轮数, 声明轮数)。覆盖 = (引用轮 + 声明轮) / 总轮数。"""
+    """返回 (覆盖率, 有引用轮数, 声明轮数)。
+
+    覆盖率按轮取并集：该轮有引用或有声明即计入（同轮两者都有的只算一次，
+    避免 >1.0）。cited/declared 为描述性子计数，一轮可同时计入两者。
+    """
     if not turns:
         return (0.0, 0, 0)
     cited = sum(1 for t in turns if turn_citations(t["text"]))
     declared = sum(1 for t in turns if has_declaration(t["text"]))
-    return ((cited + declared) / len(turns), cited, declared)
+    covered = sum(
+        1 for t in turns if turn_citations(t["text"]) or has_declaration(t["text"])
+    )
+    return (covered / len(turns), cited, declared)
 
 
 async def check_liveness(urls: List[str], transport=None) -> Dict[str, Dict]:
