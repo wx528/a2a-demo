@@ -260,13 +260,11 @@ docker compose up -d
 ## 扩展方向
 
 1. **接入真实 LLM**：配置 `LLM_API_KEY` 等环境变量即可启用
-2. **增加 agent**：比如加一个 `review-agent` 审校文章（复制现有 agent 改 `process_task` 即可）
-3. **动态发现**：orchestrator 启动时抓取各 agent 的 Agent Card 自动注册，按 skill 路由
-4. **真流式**：把 LLM 的 token 级输出通过 `SendStreamingMessage` 增量推送（`append` / `lastChunk`）
-5. **状态持久化**：把内存任务存储换成 Redis/PostgreSQL
-6. **错误重试**：在 orchestrator 里加重试和超时控制
-7. **鉴权与安全**：Agent Card 声明 securitySchemes、校验 `A2A-Version`、push notification
-8. **K8s 部署**：把每个 service 改成 Deployment + Service
+2. **增加 agent**：复制现有 agent 改 `process_task`，把地址加进 `AGENT_URLS` 即被发现（也可运行时 `POST /agents/refresh`）
+3. **鉴权与安全**：Agent Card 声明 securitySchemes、校验 `A2A-Version`、push notification
+4. **任务分页**：`ListTasks` 换成游标分页（`nextPageToken`）
+5. **错误重试**：在 orchestrator 里加重试和超时控制
+6. **K8s 部署**：把每个 service 改成 Deployment + Service
 
 ---
 

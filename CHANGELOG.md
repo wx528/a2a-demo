@@ -9,12 +9,15 @@
 
 ### Added
 
-- 任务失败兜底：`process_task` 抛异常时任务自动落入 `TASK_STATE_FAILED`（状态消息包含错误原因），不再卡在 `WORKING`；同步、异步（`returnImmediately`）与 SSE 流式三条执行路径均已覆盖
-- 多轮会话（任务续聊）：`SendMessage` 消息携带 `taskId` 且任务处于非终态时，向既有任务追加用户消息并继续处理，复用同一 task
-- 上下文续聊：消息仅携带 `contextId` 时创建新任务，并自动继承该上下文最近任务的对话历史（上限 20 条），实现跨任务会话记忆
+- Orchestrator 动态发现：启动时通过 `/.well-known/agent-card.json` 拉取 Agent Card 自动注册（`AGENT_URLS` 环境变量，逗号分隔），支持按 card 名称 / 短名 / skill id 解析，`POST /agents/refresh` 可运行时重新发现，无需重启；旧版成对 URL 环境变量保留为回退
+- 真流式输出：`A2AJSONRPCServer` 新增可选 `process_task_stream` 生成器参数，`SendStreamingMessage` 通过线程 + 队列桥接逐块推送 `TaskArtifactUpdateEvent`（`append` / `lastChunk` 语义，单一 `artifactId`）；新增 `call_llm_stream` 流式 LLM 客户端；`research-agent` 已接入（card 声明 `streaming: true`），`writing-agent` 保持非流式以示范能力协商
+- SQLite 任务持久化：新增 `SqliteTaskStore`（write-through + 重启加载），设置 `TASK_DB` 环境变量即启用；docker compose 为两个 agent 挂载 named volume 并默认开启
 
 ### Fixed
 
+- 任务失败兜底：`process_task` 抛异常时任务自动落入 `TASK_STATE_FAILED`（状态消息包含错误原因），不再卡在 `WORKING`；同步、异步（`returnImmediately`）与 SSE 流式三条执行路径均已覆盖
+- 多轮会话（任务续聊）：`SendMessage` 消息携带 `taskId` 且任务处于非终态时，向既有任务追加用户消息并继续处理，复用同一 task
+- 上下文续聊：消息仅携带 `contextId` 时创建新任务，并自动继承该上下文最近任务的对话历史（上限 20 条），实现跨任务会话记忆
 - 终态任务（`TASK_STATE_COMPLETED` / `FAILED` / `CANCELED` / `REJECTED`）再收消息时返回规范错误 `-32004` `UnsupportedOperationError`，而非静默创建新任务
 
 ## [0.4.0] - 2026-09-26

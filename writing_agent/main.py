@@ -18,6 +18,7 @@ from shared.models import (
     TaskState,
 )
 from shared.llm_client import call_llm
+from shared.task_store import SqliteTaskStore
 
 
 AGENT_PORT = int(os.getenv("PORT", 8002))
@@ -88,7 +89,16 @@ agent_card = AgentCard(
 )
 
 
-server = A2AJSONRPCServer(agent_card=agent_card, process_task=process_task)
+# 设置 TASK_DB 时启用 SQLite 任务持久化（如 /data/tasks.db），否则内存存储
+TASK_DB = os.getenv("TASK_DB")
+_task_store = SqliteTaskStore(TASK_DB) if TASK_DB else None
+
+
+server = A2AJSONRPCServer(
+    agent_card=agent_card,
+    process_task=process_task,
+    store=_task_store,
+)
 app = server.build_app(title="Writing Agent (A2A / JSON-RPC)")
 
 

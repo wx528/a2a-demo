@@ -11,6 +11,9 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - TASK_DB=/data/tasks.db
+    volumes:
+      - research-agent-data:/data
     networks:
       - a2a-network
 
@@ -26,6 +29,9 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - TASK_DB=/data/tasks.db
+    volumes:
+      - writing-agent-data:/data
     networks:
       - a2a-network
 
@@ -37,6 +43,7 @@ services:
       - "8000:8000"
     environment:
       - PORT=8000
+      - AGENT_URLS=${AGENT_URLS:-http://research-agent:8001,http://writing-agent:8002}
       - RESEARCH_AGENT_URL=http://research-agent:8001
       - WRITING_AGENT_URL=http://writing-agent:8002
     depends_on:
@@ -67,3 +74,7 @@ services:
 networks:
   a2a-network:
     driver: bridge
+
+volumes:
+  research-agent-data:
+  writing-agent-data:
