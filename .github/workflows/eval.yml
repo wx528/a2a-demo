@@ -1,0 +1,62 @@
+name: Eval
+
+# 辩论质量评测（LLM-as-judge，消耗额度）：仅手动触发。
+# Secrets: LLM_API_KEY（必须）、JUDGE_API_KEY（可选，独立裁判）
+# Variables 可选: LLM_BASE_URL / LLM_MODEL / JUDGE_BASE_URL / JUDGE_MODEL /
+#                SEARCH_PROVIDER / SEARCH_API_KEY
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Number of motions to evaluate"
+        default: "3"
+      motions:
+        description: "Comma-separated motion ids (overrides limit)"
+        default: ""
+
+jobs:
+  quality:
+    if: github.repository == 'wx528/a2a-demo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.deepseek.com/v1' }}
+      LLM_MODEL: ${{ vars.LLM_MODEL || 'deepseek-chat' }}
+      JUDGE_API_KEY: ${{ secrets.JUDGE_API_KEY }}
+      JUDGE_BASE_URL: ${{ vars.JUDGE_BASE_URL }}
+      JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}
+      SEARCH_PROVIDER: ${{ vars.SEARCH_PROVIDER || 'duckduckgo' }}
+      SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Guard - API key configured
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "::error::LLM_API_KEY secret is not configured"
+            exit 1
+          fi
+
+      - name: Run quality eval
+        run: |
+          ARGS="--spawn"
+          if [ -n "${{ github.event.inputs.motions }}" ]; then
+            ARGS="$ARGS --motions ${{ github.event.inputs.motions }}"
+          else
+            ARGS="$ARGS --limit ${{ github.event.inputs.limit }}"
+          fi
+          uv run python evals/quality/run_eval.py $ARGS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/reports/

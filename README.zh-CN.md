@@ -47,6 +47,10 @@
 ├── debate/                 # 辩论 Demo CLI 编排器
 │   ├── personas.py         # 人格库（苏格拉底 / 休谟 / 康德 ……）
 │   └── run_debate.py       # 多轮对抗辩论 + 裁判判定
+├── evals/                  # 一致性套件 + 辩论质量评测
+│   ├── conformance/        # A2A 协议合规检查（离线）
+│   ├── quality/            # 辩题集、指标、LLM-as-judge、评测 runner
+│   └── README.md           # 评测指南（两个层级）
 ├── web/                    # 会议室 Web 演示
 │   ├── main.py
 │   ├── db.py               # 会议 SQLite 持久化
@@ -320,6 +324,16 @@ uv run python debate/run_debate.py "AI 会取代大多数工作吗" \
 正方最强论据来自就业结构数据 [来源1](https://www.aei.org/...)；
 反方对"任务替代 ≠ 岗位替代"的区分没有任何来源直接支撑，属于未查证推演……
 ```
+
+---
+
+## 评测
+
+两个层级，详见 [evals/README.md](evals/README.md)：
+
+- **一致性套件**（离线免费）：11 项 A2A 协议合规检查，可对任意在线 agent 打分；CI 每次 push 自动运行
+- **辩论质量评测**（LLM-as-judge，手动触发）：15 题辩题集上的引用覆盖率、链接存活率、
+  论断支持率、人格保持度与陷阱题诚实度，输出 JSON + Markdown 报告
 
 ---
 

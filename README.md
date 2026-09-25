@@ -48,6 +48,10 @@ All agents expose the A2A protocol over **JSON-RPC 2.0** (aligned with the [A2A 
 ├── debate/                 # Persona debate CLI orchestrator
 │   ├── personas.py         # Persona library (socrates / hume / kant / ...)
 │   └── run_debate.py       # Multi-round debate + judge verdict
+├── evals/                  # Conformance suite + debate quality evals
+│   ├── conformance/        # A2A spec-compliance checks (offline)
+│   ├── quality/            # Motion set, metrics, LLM-as-judge, runner
+│   └── README.md           # Evaluation guide (two tiers)
 ├── web/                    # Meeting room web demo
 │   ├── main.py
 │   ├── db.py               # SQLite persistence for meetings
@@ -322,6 +326,18 @@ Sample transcript (abridged):
 正方最强论据来自就业结构数据 [来源1](https://www.aei.org/...)，
 反方对"任务替代 ≠ 岗位替代"的区分未被任何来源直接支撑，属于未查证推演……
 ```
+
+---
+
+## Evaluation
+
+Two tiers — see [evals/README.md](evals/README.md):
+
+- **Conformance suite** (offline, free): 11 deterministic A2A spec-compliance
+  checks against any live agent; runs in CI on every push
+- **Debate quality evals** (LLM-as-judge, manual dispatch): citation coverage,
+  link liveness, claim support, persona adherence and trap-motion honesty
+  across a 15-motion set, with JSON + Markdown reports
 
 ---
 

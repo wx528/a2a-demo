@@ -15,6 +15,8 @@
 
 ### Added
 
+- A2A 一致性套件 `evals/conformance/`：11 项协议检查对任意 agent 打分（CLI + JSON 报告），CI 每次 push 对 research/debate agent 自动运行
+- 辩论质量评测 `evals/quality/`：15 题辩题集（含 3 道错误前提陷阱题）、引用覆盖率/链接存活率确定性指标、论断支持率/人格保持度 LLM-as-judge、独立裁判（`JUDGE_*` 回退 `LLM_*` 并标注自评）、JSON+Markdown 报告；GitHub Actions `Eval` 工作流手动触发
 - GitHub Actions CI（`.github/workflows/ci.yml`）：ruff + 单元/端到端/Web 集成测试，每次 push/PR 运行，离线不消耗 LLM 额度
 - LLM 真实链路冒烟测试（`test_llm_smoke.py` + `.github/workflows/llm-smoke.yml`）：push main 或手动触发，验证非回退输出、token 级流式与 orchestrator 工作流；默认 DeepSeek（`deepseek-chat`），key 走仓库 Secret `LLM_API_KEY`，无 key 本地自动跳过
 

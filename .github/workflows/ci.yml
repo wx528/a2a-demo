@@ -34,3 +34,16 @@ jobs:
 
       - name: Web meeting room integration
         run: uv run python test_web.py
+
+      - name: Conformance suite
+        run: |
+          uv run python research_agent/main.py > /dev/null 2>&1 &
+          uv run python debate_agent/main.py > /dev/null 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8001/ > /dev/null && curl -sf http://localhost:8003/ > /dev/null && break
+            sleep 1
+          done
+          uv run python evals/conformance/suite.py --url http://localhost:8001
+          uv run python evals/conformance/suite.py --url http://localhost:8003
+          pkill -f "research_agent/main.py" || true
+          pkill -f "debate_agent/main.py" || true

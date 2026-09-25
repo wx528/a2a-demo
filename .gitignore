@@ -24,3 +24,6 @@ data/
 
 # Superpowers SDD scratch
 .superpowers/
+
+# Eval reports
+evals/reports/
