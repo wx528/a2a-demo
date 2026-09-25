@@ -1,7 +1,7 @@
 # A2A Agent Swarm 示例
 
-[![CI](https://github.com/wx528/a2a-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/wx528/a2a-demo/actions/workflows/ci.yml)
-[![LLM Smoke](https://github.com/wx528/a2a-demo/actions/workflows/llm-smoke.yml/badge.svg)](https://github.com/wx528/a2a-demo/actions/workflows/llm-smoke.yml)
+[![CI](https://github.com/wx528/a2a-demo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wx528/a2a-demo/actions/workflows/ci.yml)
+[![LLM Smoke](https://github.com/wx528/a2a-demo/actions/workflows/llm-smoke.yml/badge.svg?branch=main)](https://github.com/wx528/a2a-demo/actions/workflows/llm-smoke.yml)
 
 这是一个最小可运行的 **A2A (Agent-to-Agent)** 示例，包含：
 
