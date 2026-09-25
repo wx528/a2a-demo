@@ -86,6 +86,18 @@ def _extract_text(message: Message) -> str:
     return "\n".join(texts)
 
 
+# 终态：不能再接收后续消息（A2A 规范 3.1.1）
+_TERMINAL_STATES = (
+    TaskState.COMPLETED,
+    TaskState.FAILED,
+    TaskState.CANCELED,
+    TaskState.REJECTED,
+)
+
+# 上下文续聊时从最近任务继承的历史消息上限
+_CONTEXT_HISTORY_LIMIT = 20
+
+
 class InMemoryTaskStore:
     """内存任务存储，提供基础 CRUD。"""
 
@@ -122,14 +134,36 @@ class InMemoryTaskStore:
             parts=message.parts,
             metadata=message.metadata,
         )
+        history = [user_msg]
+        # 上下文续聊：同一 contextId 的新任务继承最近任务的对话历史
+        if message.context_id:
+            prior_history = None
+            for t in self._tasks.values():
+                if t.context_id == context_id and t.history:
+                    prior_history = t.history
+            if prior_history:
+                history = list(prior_history[-_CONTEXT_HISTORY_LIMIT:]) + [user_msg]
         task = Task(
             id=task_id,
             context_id=context_id,
             status=_task_status(TaskState.SUBMITTED, "任务已提交"),
-            history=[user_msg],
+            history=history,
         )
         self._tasks[task_id] = task
         return task
+
+    def append_user_message(self, task: Task, message: Message):
+        """多轮续聊：向既有任务追加用户消息，并回到 WORKING 状态。"""
+        user_msg = Message(
+            message_id=message.message_id or str(uuid.uuid4()),
+            context_id=task.context_id,
+            task_id=task.id,
+            role=Role.USER,
+            parts=message.parts,
+            metadata=message.metadata,
+        )
+        task.history.append(user_msg)
+        task.status = _task_status(TaskState.WORKING, "收到新消息，继续处理")
 
     def update_status(
         self, task: Task, state: TaskState, text: Optional[str] = None
@@ -193,27 +227,50 @@ class A2AJSONRPCServer:
     # 方法处理器
     # -----------------------------------------------------------------------
 
+    def _safe_process(self, task: Task):
+        """执行任务并兜底：process_task 抛异常时任务落 TASK_STATE_FAILED。"""
+        try:
+            self.process_task(task, self.store)
+        except Exception as e:
+            self.store.update_status(task, TaskState.FAILED, f"任务执行失败: {e}")
+
     async def _handle_send_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
         req = SendMessageRequest.model_validate(params)
-        return_immediately = False
-        if req.configuration and req.configuration.return_immediately:
-            return_immediately = True
+        msg = req.message
+        return_immediately = bool(req.configuration and req.configuration.return_immediately)
 
-        task = self.store.create(req.message)
+        if msg.task_id:
+            # 多轮续聊：消息指定了 taskId 时续用既有任务
+            task = self.store.get(msg.task_id)
+            if not task:
+                raise JSONRPCErrorException(
+                    _rpc_error(-32001, "Task not found", "TaskNotFoundError")
+                )
+            if task.status.state in _TERMINAL_STATES:
+                raise JSONRPCErrorException(
+                    _rpc_error(
+                        -32004,
+                        "Task is in a terminal state and cannot accept further messages",
+                        "UnsupportedOperationError",
+                    )
+                )
+            self.store.append_user_message(task, msg)
+        else:
+            task = self.store.create(msg)
 
         if return_immediately:
             asyncio.create_task(self._run_task_async(task.id))
             return self._task_to_dict(task)
 
         # 在线程中执行，避免阻塞事件循环（LLM 调用可能很慢）
-        await asyncio.to_thread(self.process_task, task, self.store)
+        await asyncio.to_thread(self._safe_process, task)
         return self._task_to_dict(task)
 
     async def _run_task_async(self, task_id: str):
         await asyncio.sleep(0.3)
         task = self.store.get(task_id)
         if task:
-            await asyncio.to_thread(self.process_task, task, self.store)
+            await asyncio.to_thread(self._safe_process, task)
 
     def _handle_get_task(self, params: Dict[str, Any]) -> Dict[str, Any]:
         req = GetTaskRequest.model_validate(params)
@@ -357,7 +414,7 @@ class A2AJSONRPCServer:
                     )
 
                     await asyncio.sleep(0.5)
-                    await asyncio.to_thread(self.process_task, task, self.store)
+                    await asyncio.to_thread(self._safe_process, task)
 
                     yield self._sse_event(
                         StreamResponse(

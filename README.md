@@ -12,7 +12,7 @@
 - `POST /rpc`：JSON-RPC 入口，支持 `SendMessage`、`GetTask`、`CancelTask`、`ListTasks`（旧名 `tasks/send` 等保留为兼容别名）
 - `POST /rpc/stream`：SSE 流式入口，支持 `SendStreamingMessage`、`SubscribeToTask`
 
-> 2026-09 更新：数据模型、方法名、枚举值、错误格式与时间戳精度已对齐现行 v1.0.0 规范（PascalCase 方法名、`TASK_STATE_*` / `ROLE_*` 枚举、`google.rpc.ErrorInfo` 错误、毫秒时间戳）。
+> 2026-09 更新：数据模型、方法名、枚举值、错误格式与时间戳精度已对齐现行 v1.0.0 规范（PascalCase 方法名、`TASK_STATE_*` / `ROLE_*` 枚举、`google.rpc.ErrorInfo` 错误、毫秒时间戳）。任务失败自动落 `TASK_STATE_FAILED`；支持多轮会话：消息带 `taskId` 续聊既有任务，带 `contextId` 新建任务并继承上下文历史。
 
 ---
 
@@ -260,11 +260,13 @@ docker compose up -d
 ## 扩展方向
 
 1. **接入真实 LLM**：配置 `LLM_API_KEY` 等环境变量即可启用
-2. **增加 agent**：比如加一个 `review-agent` 审校文章
-3. **A2A Streaming**：给 `POST /tasks/sendSubscribe` 加 SSE 流式返回
-4. **状态持久化**：把内存任务存储换成 Redis/PostgreSQL
-5. **错误重试**：在 orchestrator 里加重试和超时控制
-6. **K8s 部署**：把每个 service 改成 Deployment + Service
+2. **增加 agent**：比如加一个 `review-agent` 审校文章（复制现有 agent 改 `process_task` 即可）
+3. **动态发现**：orchestrator 启动时抓取各 agent 的 Agent Card 自动注册，按 skill 路由
+4. **真流式**：把 LLM 的 token 级输出通过 `SendStreamingMessage` 增量推送（`append` / `lastChunk`）
+5. **状态持久化**：把内存任务存储换成 Redis/PostgreSQL
+6. **错误重试**：在 orchestrator 里加重试和超时控制
+7. **鉴权与安全**：Agent Card 声明 securitySchemes、校验 `A2A-Version`、push notification
+8. **K8s 部署**：把每个 service 改成 Deployment + Service
 
 ---
 

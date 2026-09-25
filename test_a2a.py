@@ -221,6 +221,140 @@ def test_model_serialization():
     print("[OK] model serialization")
 
 
+def _build_test_agent(process_task):
+    """构建一个最小 A2A agent 应用，用于协议层行为测试。"""
+    from shared.a2a_server import A2AJSONRPCServer
+    from shared.models import AgentCapabilities, AgentCard, AgentInterface
+
+    card = AgentCard(
+        name="test-agent",
+        description="test",
+        supported_interfaces=[
+            AgentInterface(url="http://test/rpc", protocol_binding="JSONRPC", protocol_version="1.0")
+        ],
+        version="1.0.0",
+        capabilities=AgentCapabilities(),
+        default_input_modes=["text/plain"],
+        default_output_modes=["text/plain"],
+        skills=[],
+    )
+    return A2AJSONRPCServer(agent_card=card, process_task=process_task).build_app()
+
+
+def _msg(mid, text, role="ROLE_USER", **extra):
+    m = {"messageId": mid, "role": role, "parts": [{"text": text}]}
+    m.update(extra)
+    return m
+
+
+def test_task_failure_sets_failed_state():
+    """process_task 抛异常时，任务必须落到 TASK_STATE_FAILED 而不是卡在 WORKING。"""
+    from shared.models import Task, TaskState
+
+    def boom(task: Task, store):
+        store.update_status(task, TaskState.WORKING, "working...")
+        raise RuntimeError("LLM exploded")
+
+    client = TestClient(_build_test_agent(boom))
+    rpc_resp = rpc(client, "SendMessage", {"message": _msg("f1", "hello")})
+    assert rpc_resp.get("error") is None, rpc_resp
+    task = rpc_resp["result"]
+    assert task["status"]["state"] == "TASK_STATE_FAILED", task["status"]
+    status_text = task["status"]["message"]["parts"][0]["text"]
+    assert "LLM exploded" in status_text
+
+    # 失败任务仍可通过 GetTask 查询
+    rpc_resp = rpc(client, "GetTask", {"id": task["id"]})
+    assert rpc_resp["result"]["status"]["state"] == "TASK_STATE_FAILED"
+    print("[OK] process_task exception -> TASK_STATE_FAILED")
+
+
+def test_multi_turn_task_continuation():
+    """INPUT_REQUIRED 任务通过 taskId 续聊，复用同一 task 并追加历史。"""
+    from shared.models import Role, Task, TaskState
+
+    def ask_for_more(task: Task, store):
+        user_texts = [
+            p.text for m in task.history if m.role == Role.USER for p in m.parts if p.text
+        ]
+        if len(user_texts) == 1:
+            store.update_status(task, TaskState.WORKING, "thinking...")
+            store.update_status(task, TaskState.INPUT_REQUIRED, "请补充更多细节")
+        else:
+            store.add_artifact(task, "response", f"answered: {' | '.join(user_texts)}")
+            store.update_status(task, TaskState.COMPLETED, "done")
+
+    client = TestClient(_build_test_agent(ask_for_more))
+
+    first = rpc(client, "SendMessage", {"message": _msg("t1", "kubernetes")})
+    task1 = first["result"]
+    assert task1["status"]["state"] == "TASK_STATE_INPUT_REQUIRED", task1["status"]
+
+    second = rpc(
+        client,
+        "SendMessage",
+        {"message": _msg("t2", "聚焦 pod 调度", taskId=task1["id"], contextId=task1["contextId"])},
+    )
+    assert second.get("error") is None, second
+    task2 = second["result"]
+    assert task2["id"] == task1["id"], "continuation must reuse the same task"
+    assert task2["status"]["state"] == "TASK_STATE_COMPLETED", task2["status"]
+    user_turns = [m for m in task2["history"] if m["role"] == "ROLE_USER"]
+    assert len(user_turns) == 2, "history must contain both user turns"
+    text = task2["artifacts"][0]["parts"][0]["text"]
+    assert "kubernetes" in text and "pod" in text
+    print("[OK] multi-turn continuation via taskId")
+
+
+def test_terminal_task_rejects_continuation():
+    """终态（COMPLETED）任务不能再接收消息，返回 -32004 UnsupportedOperationError。"""
+    from shared.models import Task, TaskState
+
+    def one_shot(task: Task, store):
+        store.update_status(task, TaskState.WORKING)
+        store.add_artifact(task, "response", "ok")
+        store.update_status(task, TaskState.COMPLETED)
+
+    client = TestClient(_build_test_agent(one_shot))
+    task = rpc(client, "SendMessage", {"message": _msg("d1", "hi")})["result"]
+
+    rpc_resp = rpc(
+        client,
+        "SendMessage",
+        {"message": _msg("d2", "again", taskId=task["id"])},
+    )
+    err = rpc_resp.get("error")
+    assert err, "expected error for continuing a terminal task"
+    assert err["code"] == -32004, err
+    assert err["data"][0]["reason"] == "UNSUPPORTED_OPERATION"
+    print("[OK] terminal task continuation rejected with -32004")
+
+
+def test_context_continuation_seeds_history():
+    """带 contextId 的新消息创建新 task，且能继承该上下文的历史消息。"""
+    from shared.models import Task, TaskState
+
+    def echo(task: Task, store):
+        store.update_status(task, TaskState.WORKING)
+        n = len([m for m in task.history if m.role])
+        store.add_artifact(task, "response", f"turns={n}")
+        store.update_status(task, TaskState.COMPLETED)
+
+    client = TestClient(_build_test_agent(echo))
+    t1 = rpc(client, "SendMessage", {"message": _msg("c1", "first")})["result"]
+    t2 = rpc(
+        client,
+        "SendMessage",
+        {"message": _msg("c2", "second", contextId=t1["contextId"])},
+    )["result"]
+
+    assert t2["id"] != t1["id"], "new task expected for context continuation"
+    assert t2["contextId"] == t1["contextId"], "context must be preserved"
+    first_texts = [p["text"] for m in t2["history"] for p in m["parts"] if p.get("text")]
+    assert "first" in first_texts and "second" in first_texts, t2["history"]
+    print("[OK] context continuation seeds history")
+
+
 if __name__ == "__main__":
     test_model_serialization()
     test_agent_card_canonical_path()
@@ -231,5 +365,9 @@ if __name__ == "__main__":
     test_legacy_method_alias()
     test_error_format_google_rpc_status()
     test_send_message_does_not_block_event_loop()
+    test_task_failure_sets_failed_state()
+    test_multi_turn_task_continuation()
+    test_terminal_task_rejects_continuation()
+    test_context_continuation_seeds_history()
     test_orchestrator()
     print("\nAll A2A core tests passed!")

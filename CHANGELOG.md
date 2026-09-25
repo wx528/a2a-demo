@@ -7,7 +7,15 @@
 
 ## [Unreleased]
 
-无。
+### Added
+
+- 任务失败兜底：`process_task` 抛异常时任务自动落入 `TASK_STATE_FAILED`（状态消息包含错误原因），不再卡在 `WORKING`；同步、异步（`returnImmediately`）与 SSE 流式三条执行路径均已覆盖
+- 多轮会话（任务续聊）：`SendMessage` 消息携带 `taskId` 且任务处于非终态时，向既有任务追加用户消息并继续处理，复用同一 task
+- 上下文续聊：消息仅携带 `contextId` 时创建新任务，并自动继承该上下文最近任务的对话历史（上限 20 条），实现跨任务会话记忆
+
+### Fixed
+
+- 终态任务（`TASK_STATE_COMPLETED` / `FAILED` / `CANCELED` / `REJECTED`）再收消息时返回规范错误 `-32004` `UnsupportedOperationError`，而非静默创建新任务
 
 ## [0.4.0] - 2026-09-26
 
