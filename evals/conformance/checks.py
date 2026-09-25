@@ -41,6 +41,15 @@ async def agent_card(client, ctx):
     if "supportedInterfaces" in card and "protocolBinding" not in card["supportedInterfaces"][0]:
         problems.append("interfaces[0].protocolBinding")
     ctx["card"] = card
+    # 探针文本优先用 card 声明的输入示例（不同 agent 的输入契约不同，
+    # 例如 debate agent 要求 [辩题/MOTION] 段落开头的消息）
+    probe = "conformance probe"
+    for skill in card.get("skills", []):
+        examples = skill.get("examples") or []
+        if examples:
+            probe = examples[0]
+            break
+    ctx["probe"] = probe
     if problems:
         return CheckResult("agent-card", "FAIL", f"missing: {problems}")
     return CheckResult("agent-card", "PASS", card["name"])
@@ -48,7 +57,7 @@ async def agent_card(client, ctx):
 
 @check
 async def send_message_v1(client, ctx):
-    resp = await client.call_raw("SendMessage", _msg("conformance probe", "cf-1"))
+    resp = await client.call_raw("SendMessage", _msg(ctx.get("probe", "conformance probe"), "cf-1"))
     if resp.get("error"):
         return CheckResult("send-message-v1", "FAIL", str(resp["error"])[:120])
     task = resp["result"]
@@ -75,7 +84,7 @@ async def timestamp_milliseconds(client, ctx):
 
 @check
 async def legacy_method_alias(client, ctx):
-    payload = {"message": {"messageId": "cf-legacy", "role": "user", "parts": [{"text": "legacy probe"}]}}
+    payload = {"message": {"messageId": "cf-legacy", "role": "user", "parts": [{"text": ctx.get("probe", "legacy probe")}]}}
     resp = await client.call_raw("tasks/send", payload)
     if resp.get("error"):
         return CheckResult("legacy-method-alias", "FAIL", str(resp["error"])[:120])
@@ -205,7 +214,7 @@ async def streaming_chunks(client, ctx):
     card_streams = bool((card.get("capabilities") or {}).get("streaming"))
     if not card_streams and not ctx.get("force_streaming"):
         return CheckResult("streaming-chunks", "SKIP", "card declares streaming=false")
-    events = await client.stream_send("conformance streaming probe")
+    events = await client.stream_send(ctx.get("probe", "conformance streaming probe"))
     updates = [e["artifactUpdate"] for e in events if "artifactUpdate" in e]
     states = [e["statusUpdate"]["status"]["state"] for e in events if "statusUpdate" in e]
     if not updates:

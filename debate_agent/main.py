@@ -198,7 +198,7 @@ agent_card = AgentCard(
             name="人格辩论",
             description="按人格与立场进行基于检索资料的辩论",
             tags=["debate", "argumentation"],
-            examples=["辩题：AI 会取代大多数工作吗"],
+            examples=["[辩题/MOTION] AI 会取代大多数工作吗"],
             input_modes=["text/plain"],
             output_modes=["text/markdown"],
         )
