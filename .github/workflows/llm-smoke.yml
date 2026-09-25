@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Guard: key configured
+      - name: Guard - API key configured
         run: |
           if [ -z "$LLM_API_KEY" ]; then
             echo "::error::LLM_API_KEY secret is not configured"
