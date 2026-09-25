@@ -5,6 +5,7 @@ Research Agent - A2A 合规示例（JSON-RPC 2.0 绑定）
 
 import os
 import sys
+from typing import Iterator
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore
@@ -17,7 +18,7 @@ from shared.models import (
     Task,
     TaskState,
 )
-from shared.llm_client import call_llm
+from shared.llm_client import call_llm, call_llm_stream
 
 
 AGENT_PORT = int(os.getenv("PORT", 8001))
@@ -41,18 +42,42 @@ def generate_response(user_text: str) -> str:
     return "（当前 LLM 服务不可用，无法生成回答。）"
 
 
-def process_task(task: Task, store: InMemoryTaskStore):
-    """研究 Agent 的核心处理逻辑。"""
-    store.update_status(task, TaskState.WORKING, "正在研究...")
-
+def _collect_user_text(task: Task) -> str:
     user_text = ""
     for msg in task.history:
         if msg.role == Role.USER:
             for part in msg.parts:
                 if part.text:
                     user_text += part.text
+    return user_text
 
-    response = generate_response(user_text)
+
+def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
+    """流式版本：增量产出 LLM token；LLM 不可用时整段回退。"""
+    user_text = _collect_user_text(task)
+    deltas = call_llm_stream(DEFAULT_SYSTEM_PROMPT, user_text)
+    fallback = "（当前 LLM 服务不可用，无法生成回答。）"
+    if deltas is None:
+        yield fallback
+        return
+
+    emitted = False
+    try:
+        for delta in deltas:
+            if delta:
+                emitted = True
+                yield delta
+    except Exception:
+        return
+    if not emitted:
+        yield fallback
+
+
+def process_task(task: Task, store: InMemoryTaskStore):
+    """研究 Agent 的核心处理逻辑。"""
+    store.update_status(task, TaskState.WORKING, "正在研究...")
+
+    response = generate_response(_collect_user_text(task))
     store.add_artifact(task, "response", response, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "研究完成")
 
@@ -89,7 +114,11 @@ agent_card = AgentCard(
 )
 
 
-server = A2AJSONRPCServer(agent_card=agent_card, process_task=process_task)
+server = A2AJSONRPCServer(
+    agent_card=agent_card,
+    process_task=process_task,
+    process_task_stream=stream_response,
+)
 app = server.build_app(title="Research Agent (A2A / JSON-RPC)")
 
 

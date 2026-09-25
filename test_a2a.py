@@ -221,7 +221,7 @@ def test_model_serialization():
     print("[OK] model serialization")
 
 
-def _build_test_agent(process_task):
+def _build_test_agent(process_task, process_task_stream=None):
     """构建一个最小 A2A agent 应用，用于协议层行为测试。"""
     from shared.a2a_server import A2AJSONRPCServer
     from shared.models import AgentCapabilities, AgentCard, AgentInterface
@@ -233,12 +233,16 @@ def _build_test_agent(process_task):
             AgentInterface(url="http://test/rpc", protocol_binding="JSONRPC", protocol_version="1.0")
         ],
         version="1.0.0",
-        capabilities=AgentCapabilities(),
+        capabilities=AgentCapabilities(streaming=process_task_stream is not None),
         default_input_modes=["text/plain"],
         default_output_modes=["text/plain"],
         skills=[],
     )
-    return A2AJSONRPCServer(agent_card=card, process_task=process_task).build_app()
+    return A2AJSONRPCServer(
+        agent_card=card,
+        process_task=process_task,
+        process_task_stream=process_task_stream,
+    ).build_app()
 
 
 def _msg(mid, text, role="ROLE_USER", **extra):
@@ -355,6 +359,89 @@ def test_context_continuation_seeds_history():
     print("[OK] context continuation seeds history")
 
 
+def test_streaming_artifact_chunks():
+    """SendStreamingMessage + process_task_stream：增量 artifact 事件（append/lastChunk）。"""
+    import json as _json
+
+    def stream_process(task, store):
+        for piece in ["Hello ", "stream ", "world"]:
+            yield piece
+
+    app = _build_test_agent(process_task=lambda t, s: None, process_task_stream=stream_process)
+    client = TestClient(app)
+    resp = client.post(
+        "/rpc/stream",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "SendStreamingMessage",
+            "params": {"message": _msg("s1", "hi")},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    events = [
+        _json.loads(line[len("data: "):])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+
+    chunks = [e["artifactUpdate"] for e in events if "artifactUpdate" in e]
+    assert len(chunks) >= 3, f"expected >=3 artifact chunks, got {len(chunks)}"
+    assert chunks[0]["append"] is False, "first chunk starts a new artifact"
+    assert all(c["append"] for c in chunks[1:]), "subsequent chunks must append"
+    assert chunks[-1]["lastChunk"] is True, "final chunk must set lastChunk"
+    artifact_ids = {c["artifact"]["artifactId"] for c in chunks}
+    assert len(artifact_ids) == 1, "chunks must reference the same artifact"
+    assembled = "".join(c["artifact"]["parts"][0]["text"] for c in chunks)
+    assert assembled == "Hello stream world", assembled
+
+    # 任务终态 + 完整 artifact 落库
+    task_id = [e["task"]["id"] for e in events if "task" in e][0]
+    final_states = [
+        e["statusUpdate"]["status"]["state"]
+        for e in events
+        if "statusUpdate" in e
+    ]
+    assert "TASK_STATE_COMPLETED" in final_states, final_states
+    got = rpc(client, "GetTask", {"id": task_id})["result"]
+    assert got["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert got["artifacts"][0]["parts"][0]["text"] == "Hello stream world"
+    print(f"[OK] streaming: {len(chunks)} chunks, assembled={assembled!r}")
+
+
+def test_streaming_generator_failure_marks_failed():
+    """流式生成器抛异常时任务落 TASK_STATE_FAILED，SSE 正常收尾。"""
+    import json as _json
+
+    def bad_stream(task, store):
+        yield "partial..."
+        raise RuntimeError("stream boom")
+
+    app = _build_test_agent(process_task=lambda t, s: None, process_task_stream=bad_stream)
+    client = TestClient(app)
+    resp = client.post(
+        "/rpc/stream",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "SendStreamingMessage",
+            "params": {"message": _msg("s2", "hi")},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    events = [
+        _json.loads(line[len("data: "):])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    states = [e["statusUpdate"]["status"]["state"] for e in events if "statusUpdate" in e]
+    assert "TASK_STATE_FAILED" in states, states
+    task_id = [e["task"]["id"] for e in events if "task" in e][0]
+    got = rpc(client, "GetTask", {"id": task_id})["result"]
+    assert got["status"]["state"] == "TASK_STATE_FAILED"
+    print("[OK] streaming failure -> TASK_STATE_FAILED")
+
+
 if __name__ == "__main__":
     test_model_serialization()
     test_agent_card_canonical_path()
@@ -369,5 +456,7 @@ if __name__ == "__main__":
     test_multi_turn_task_continuation()
     test_terminal_task_rejects_continuation()
     test_context_continuation_seeds_history()
+    test_streaming_artifact_chunks()
+    test_streaming_generator_failure_marks_failed()
     test_orchestrator()
     print("\nAll A2A core tests passed!")

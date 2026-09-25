@@ -5,7 +5,7 @@
 
 import os
 import warnings
-from typing import Optional
+from typing import Iterator, Optional
 
 try:
     from openai import OpenAI
@@ -73,3 +73,48 @@ def call_llm(
     except Exception as e:
         warnings.warn(f"LLM call failed: {e}")
         return None
+
+
+def call_llm_stream(
+    system_prompt: str,
+    user_prompt: str,
+    model: Optional[str] = None,
+    temperature: float = 0.7,
+    max_tokens: int = 2000,
+) -> Optional[Iterator[str]]:
+    """
+    流式调用 LLM，返回增量文本生成器。
+    如果未配置 LLM 或建立流失败，返回 None，调用方应回退到本地逻辑。
+    注意：迭代中抛出的异常由调用方处理。
+    """
+    client = _get_client()
+    if client is None:
+        return None
+
+    model = model or os.getenv("LLM_MODEL", "gpt-4o-mini")
+    if model.startswith("ollama/"):
+        model = model.replace("ollama/", "")
+
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+    except Exception as e:
+        warnings.warn(f"LLM stream call failed: {e}")
+        return None
+
+    def _gen():
+        for chunk in stream:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
+
+    return _gen()

@@ -6,8 +6,9 @@ A2A JSON-RPC 2.0 服务端公共组件。
 import asyncio
 import json
 import re
+import threading
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import (
     AgentCard,
+    Artifact,
     CancelTaskRequest,
     GetTaskRequest,
     JSONRPCError,
@@ -191,6 +193,13 @@ class InMemoryTaskStore:
         task.history.append(agent_msg)
 
 
+class _StreamError:
+    """流式工作线程抛出的异常包装。"""
+
+    def __init__(self, exc: Exception):
+        self.exc = exc
+
+
 class A2AJSONRPCServer:
     """
     A2A JSON-RPC 2.0 服务端封装。
@@ -199,7 +208,11 @@ class A2AJSONRPCServer:
         def process_task(task: Task, store: InMemoryTaskStore):
             ...
 
-        server = A2AJSONRPCServer(agent_card, process_task)
+        def process_task_stream(task: Task, store) -> Iterator[str]:
+            for delta in llm_stream():
+                yield delta
+
+        server = A2AJSONRPCServer(agent_card, process_task, process_task_stream)
         app = server.build_app()
     """
 
@@ -207,10 +220,13 @@ class A2AJSONRPCServer:
         self,
         agent_card: AgentCard,
         process_task: Callable[[Task, InMemoryTaskStore], None],
+        process_task_stream: Optional[Callable[[Task, InMemoryTaskStore], Iterator[str]]] = None,
+        store: Optional[InMemoryTaskStore] = None,
     ):
         self.agent_card = agent_card
         self.process_task = process_task
-        self.store = InMemoryTaskStore()
+        self.process_task_stream = process_task_stream
+        self.store = store if store is not None else InMemoryTaskStore()
 
     def _task_to_dict(
         self, task: Task, history_length: Optional[int] = None
@@ -413,6 +429,12 @@ class A2AJSONRPCServer:
                         )
                     )
 
+                    if self.process_task_stream is not None:
+                        # 真流式：逐块推送 artifact 增量事件
+                        async for sse in self._stream_task_events(task):
+                            yield sse
+                        return
+
                     await asyncio.sleep(0.5)
                     await asyncio.to_thread(self._safe_process, task)
 
@@ -479,6 +501,95 @@ class A2AJSONRPCServer:
             }
 
         return app
+
+    async def _stream_task_events(self, task: Task):
+        """
+        在工作线程中迭代 process_task_stream，逐块产出 artifact 增量事件。
+        通过 asyncio.Queue 把线程产出桥接回事件循环；生成器抛异常时任务落 FAILED。
+        """
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        done = object()
+
+        def worker():
+            try:
+                for delta in self.process_task_stream(task, self.store):
+                    if delta:
+                        # 无界队列 put 不阻塞，fire-and-forget 保序投递
+                        asyncio.run_coroutine_threadsafe(queue.put(delta), loop)
+            except Exception as e:
+                asyncio.run_coroutine_threadsafe(queue.put(_StreamError(e)), loop)
+                return
+            asyncio.run_coroutine_threadsafe(queue.put(done), loop)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        artifact_id = str(uuid.uuid4())
+        full: List[str] = []
+        idx = 0
+        pending: Optional[str] = None  # 向前看一格，用于标记 lastChunk
+
+        def chunk_event(text: str, last: bool) -> str:
+            return self._sse_event(
+                StreamResponse(
+                    artifact_update=TaskArtifactUpdateEvent(
+                        task_id=task.id,
+                        context_id=task.context_id,
+                        artifact=Artifact(
+                            artifact_id=artifact_id,
+                            name="response",
+                            parts=[text_part(text)],
+                        ),
+                        append=idx > 0,
+                        last_chunk=last,
+                    )
+                )
+            )
+
+        while True:
+            item = await queue.get()
+            if isinstance(item, _StreamError):
+                self.store.update_status(
+                    task, TaskState.FAILED, f"任务执行失败: {item.exc}"
+                )
+                yield self._sse_event(
+                    StreamResponse(
+                        status_update=TaskStatusUpdateEvent(
+                            task_id=task.id,
+                            context_id=task.context_id,
+                            status=task.status,
+                        )
+                    )
+                )
+                await asyncio.to_thread(thread.join)
+                return
+            if item is done:
+                break
+            if pending is not None:
+                full.append(pending)
+                yield chunk_event(pending, last=False)
+                idx += 1
+            pending = item
+
+        if pending is not None:
+            full.append(pending)
+            yield chunk_event(pending, last=True)
+            idx += 1
+        await asyncio.to_thread(thread.join)
+
+        if full:
+            self.store.add_artifact(task, "response", "".join(full))
+        self.store.update_status(task, TaskState.COMPLETED, "任务完成")
+        yield self._sse_event(
+            StreamResponse(
+                status_update=TaskStatusUpdateEvent(
+                    task_id=task.id,
+                    context_id=task.context_id,
+                    status=task.status,
+                )
+            )
+        )
 
     @staticmethod
     def _sse_event(stream_resp: StreamResponse) -> str:
