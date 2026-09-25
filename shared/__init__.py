@@ -1,4 +1,11 @@
-from .llm_client import call_llm
+"""
+A2A 共享库公共接口。
+
+`from shared import AgentCard, ...` 与 `from shared.models import ...` 等价；
+TextPart / FilePart / DataPart / TaskSendParams 为 v0.x 向后兼容别名。
+"""
+
+from .llm_client import call_llm, call_llm_stream
 from .models import (
     AgentCapabilities,
     AgentCard,
@@ -33,3 +40,42 @@ from .models import (
     text_part,
     utc_now_iso,
 )
+from .task_store import SqliteTaskStore
+
+__all__ = [
+    "AgentCapabilities",
+    "AgentCard",
+    "AgentInterface",
+    "AgentProvider",
+    "AgentSkill",
+    "Artifact",
+    "CancelTaskRequest",
+    "DataPart",
+    "FilePart",
+    "GetTaskRequest",
+    "JSONRPCError",
+    "JSONRPCRequest",
+    "JSONRPCResponse",
+    "ListTasksRequest",
+    "ListTasksResponse",
+    "Message",
+    "Part",
+    "Role",
+    "SendMessageConfiguration",
+    "SendMessageRequest",
+    "SqliteTaskStore",
+    "StreamResponse",
+    "SubscribeToTaskRequest",
+    "Task",
+    "TaskArtifactUpdateEvent",
+    "TaskSendParams",
+    "TaskState",
+    "TaskStatus",
+    "TaskStatusUpdateEvent",
+    "TextPart",
+    "artifact_from_text",
+    "call_llm",
+    "call_llm_stream",
+    "text_part",
+    "utc_now_iso",
+]
