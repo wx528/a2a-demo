@@ -557,5 +557,7 @@ if __name__ == "__main__":
     test_streaming_artifact_chunks()
     test_streaming_generator_failure_marks_failed()
     # test_research_streaming_failure_marks_failed 依赖 monkeypatch，pytest 下运行
+    test_cancel_race_keeps_canceled_state()
+    test_cancel_unknown_task_error_code()
     test_orchestrator()
     print("\nAll A2A core tests passed!")

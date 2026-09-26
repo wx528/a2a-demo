@@ -342,9 +342,10 @@ uv run python debate/run_debate.py "AI 会取代大多数工作吗" \
 1. **接入真实 LLM**：配置 `LLM_API_KEY` 等环境变量即可启用
 2. **增加 agent**：复制现有 agent 改 `process_task`，把地址加进 `AGENT_URLS` 即被发现（也可运行时 `POST /agents/refresh`）
 3. **鉴权与安全**：Agent Card 声明 securitySchemes、校验 `A2A-Version`、push notification
-4. **任务分页**：`ListTasks` 换成游标分页（`nextPageToken`）
-5. **错误重试**：在 orchestrator 里加重试和超时控制
-6. **K8s 部署**：把每个 service 改成 Deployment + Service
+4. **协作式取消**：CancelTask 会把任务标记为 CANCELED，但正在执行的 worker（阻塞或流式）会继续跑到结束并消耗 LLM token——迟到的写入会被终态守卫丢弃
+5. **任务分页**：`ListTasks` 换成游标分页（`nextPageToken`）
+6. **错误重试**：在 orchestrator 里加重试和超时控制
+7. **K8s 部署**：把每个 service 改成 Deployment + Service
 
 ---
 

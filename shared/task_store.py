@@ -24,7 +24,8 @@ class SqliteTaskStore(InMemoryTaskStore):
         db_dir = os.path.dirname(os.path.abspath(db_path))
         os.makedirs(db_dir, exist_ok=True)
         self._db_path = db_path
-        self._lock = threading.Lock()
+        # 独立的数据库写锁（不覆盖父类的 _lock；RLock 允许覆写方法内嵌套调用 _flush）
+        self._db_lock = threading.RLock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute(
             """
@@ -49,8 +50,9 @@ class SqliteTaskStore(InMemoryTaskStore):
             self._tasks[task.id] = task
 
     def _flush(self, task: Task):
-        data = task.model_dump(mode="json", by_alias=True, exclude_none=True)
-        with self._lock:
+        # dump 与写入同锁执行，避免并发 flush 用旧快照覆盖新快照
+        with self._db_lock:
+            data = task.model_dump(mode="json", by_alias=True, exclude_none=True)
             self._conn.execute(
                 """
                 INSERT INTO tasks (id, context_id, data, updated_at)
@@ -71,22 +73,27 @@ class SqliteTaskStore(InMemoryTaskStore):
 
     def close(self):
         """关闭数据库连接（服务停机时调用）。"""
-        with self._lock:
+        with self._db_lock:
             self._conn.close()
 
     def create(self, message: Message) -> Task:
-        task = super().create(message)
-        self._flush(task)
-        return task
+        # super() 的内存变更与落盘在同一个 _db_lock 段内，保证写序一致
+        with self._db_lock:
+            task = super().create(message)
+            self._flush(task)
+            return task
 
     def append_user_message(self, task: Task, message: Message):
-        super().append_user_message(task, message)
-        self._flush(task)
+        with self._db_lock:
+            super().append_user_message(task, message)
+            self._flush(task)
 
     def update_status(self, task: Task, state: TaskState, text: Optional[str] = None):
-        super().update_status(task, state, text)
-        self._flush(task)
+        with self._db_lock:
+            super().update_status(task, state, text)
+            self._flush(task)
 
     def add_artifact(self, task: Task, name: str, text: str, media_type: str = "text/plain"):
-        super().add_artifact(task, name, text, media_type)
-        self._flush(task)
+        with self._db_lock:
+            super().add_artifact(task, name, text, media_type)
+            self._flush(task)

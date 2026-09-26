@@ -346,9 +346,10 @@ Two tiers — see [evals/README.md](evals/README.md):
 1. **Plug in a real LLM**: set `LLM_API_KEY` and friends
 2. **Add an agent**: copy an existing agent, tweak `process_task`, add its URL to `AGENT_URLS` (or call `POST /agents/refresh` at runtime)
 3. **Auth & security**: declare securitySchemes in the Agent Card, validate `A2A-Version`, push notifications
-4. **Task pagination**: switch `ListTasks` to cursor-based paging (`nextPageToken`)
-5. **Retries**: add retry/timeout control in the orchestrator
-6. **Kubernetes**: turn each service into a Deployment + Service
+4. **Cooperative cancellation**: CancelTask marks the task CANCELED, but a running worker (blocking or streaming) keeps processing to completion and burns LLM tokens until then — late writes are discarded by the terminal-state guard
+5. **Task pagination**: switch `ListTasks` to cursor-based paging (`nextPageToken`)
+6. **Retries**: add retry/timeout control in the orchestrator
+7. **Kubernetes**: turn each service into a Deployment + Service
 
 ---
 
