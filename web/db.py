@@ -3,19 +3,21 @@
 提供会议、参与者、消息的增删改查，用于实现会话历史与会话列表。
 """
 
+import json
 import os
 import sqlite3
 from typing import Dict, List, Optional
 
 
-DB_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+DB_PATH = os.path.join(
+    os.environ.get("A2A_WEB_DB_DIR")
+    or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"),
+    "meetings.db",
 )
-DB_PATH = os.path.join(DB_DIR, "meetings.db")
 
 
 def _get_conn() -> sqlite3.Connection:
-    os.makedirs(DB_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -64,8 +66,24 @@ def init_db():
             """
         )
         conn.commit()
+        _migrate(conn)
     finally:
         conn.close()
+
+
+def _migrate(conn):
+    """为旧库幂等补新列。"""
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(meetings)")}
+    additions = {
+        "auto_play": "INTEGER DEFAULT 0",
+        "pro_persona": "TEXT DEFAULT ''",
+        "con_persona": "TEXT DEFAULT ''",
+        "turn_state": "TEXT DEFAULT '{}'",
+    }
+    for col, decl in additions.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE meetings ADD COLUMN {col} {decl}")
+    conn.commit()
 
 
 def save_meeting(meeting: Dict):
@@ -74,8 +92,10 @@ def save_meeting(meeting: Dict):
     try:
         conn.execute(
             """
-            INSERT OR REPLACE INTO meetings (id, topic, mode, max_rounds, created_at, status)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO meetings
+                (id, topic, mode, max_rounds, created_at, status,
+                 auto_play, pro_persona, con_persona, turn_state)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 meeting["id"],
@@ -84,6 +104,10 @@ def save_meeting(meeting: Dict):
                 meeting["max_rounds"],
                 meeting["created_at"],
                 meeting["status"],
+                1 if meeting.get("auto_play") else 0,
+                meeting.get("pro_persona", ""),
+                meeting.get("con_persona", ""),
+                json.dumps(meeting.get("turn_state") or {}, ensure_ascii=False),
             ),
         )
         # 覆盖参与者
@@ -161,6 +185,11 @@ def get_meeting(meeting_id: str) -> Optional[Dict]:
             return None
 
         meeting = dict(row)
+        meeting["auto_play"] = bool(meeting.get("auto_play"))
+        try:
+            meeting["turn_state"] = json.loads(meeting.get("turn_state") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            meeting["turn_state"] = {}
         meeting["participants"] = [
             dict(r)
             for r in conn.execute(
@@ -185,7 +214,8 @@ def list_meetings() -> List[Dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, topic, mode, max_rounds, created_at, status FROM meetings ORDER BY created_at DESC"
+            "SELECT id, topic, mode, max_rounds, created_at, status, auto_play "
+            "FROM meetings ORDER BY created_at DESC"
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
