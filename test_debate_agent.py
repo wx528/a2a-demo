@@ -197,3 +197,32 @@ def test_streaming_midstream_failure_marks_failed(monkeypatch):
     got = _get_task(client, task_id)
     assert got["status"]["state"] == "TASK_STATE_FAILED"
     assert "stream boom" in got["status"]["message"]["parts"][0]["text"]
+
+
+def test_parse_debate_input_inquiry_section():
+    text = INPUT + "[观众质询/INQUIRY]\n请直接回应成本问题\n"
+    parsed = parse_debate_input(text)
+    assert parsed["inquiry"] == "请直接回应成本问题"
+    assert parse_debate_input(INPUT)["inquiry"] == ""
+
+
+def test_inquiry_flows_into_llm_prompt(monkeypatch):
+    import debate_agent.main as m
+
+    captured = {}
+
+    def fake_llm(system, user, **kw):
+        captured["user"] = user
+        return "论点 [来源1](https://real.com)"
+
+    monkeypatch.setattr(
+        m, "web_search",
+        lambda q, max_results=5: [{"title": "t", "url": "https://real.com", "snippet": "s"}],
+    )
+    monkeypatch.setattr(m, "call_llm", fake_llm)
+    client = TestClient(app)
+    text = INPUT + "[观众质询/INQUIRY]\n请回应就业结构数据\n"
+    task = _send(client, text)
+    assert task["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert "观众质询" in captured["user"]
+    assert "请回应就业结构数据" in captured["user"]

@@ -37,12 +37,13 @@ _NO_SOURCES_NOTE = "（注意：本次未能检索到可靠外部来源，以下
 
 def parse_debate_input(text: str) -> Dict[str, str]:
     """解析 [辩题/MOTION] 等方括号段落，未出现的段落返回空串。"""
-    sections = {"motion": "", "persona": "", "stance": "", "opponent": ""}
+    sections = {"motion": "", "persona": "", "stance": "", "opponent": "", "inquiry": ""}
     for key, marker in [
         ("motion", r"\[(?:辩题/)?MOTION\]"),
         ("persona", r"\[(?:角色/)?PERSONA\]"),
         ("stance", r"\[(?:立场/)?STANCE\]"),
         ("opponent", r"\[(?:对手论点/)?OPPONENT_ARGUMENTS\]"),
+        ("inquiry", r"\[(?:观众质询/)?INQUIRY\]"),
     ]:
         m = re.search(marker + r"\s*(.*?)(?=\n\[|\Z)", text, re.S)
         if m:
@@ -107,19 +108,21 @@ def _format_sources(sources: List[Dict[str, str]]) -> str:
     return "\n\n".join(lines)
 
 
-def compose_user_prompt(motion, persona, stance, opponent, sources) -> str:
+def compose_user_prompt(motion, persona, stance, opponent, sources, inquiry: str = "") -> str:
+    inquiry_block = f"\n观众质询（必须回应）：\n{inquiry}\n" if inquiry else ""
     return (
         f"辩题：{motion}\n"
         f"你的人格：{persona or '中立辩手'}\n"
         f"你的立场：{stance or '正方'}\n\n"
         f"检索资料：\n{_format_sources(sources)}\n\n"
-        f"对手此前论点：\n{opponent or '（无，本轮为开篇立论）'}\n\n"
+        f"对手此前论点：\n{opponent or '（无，本轮为开篇立论）'}\n"
+        f"{inquiry_block}\n"
         "请输出本轮论点。"
     )
 
 
-def compose_argument(motion, persona, stance, opponent, sources) -> str:
-    user_prompt = compose_user_prompt(motion, persona, stance, opponent, sources)
+def compose_argument(motion, persona, stance, opponent, sources, inquiry: str = "") -> str:
+    user_prompt = compose_user_prompt(motion, persona, stance, opponent, sources, inquiry)
     result = call_llm(build_system_prompt(), user_prompt, max_tokens=1200)
     if result:
         text = result.split("</think>")[-1].strip()
@@ -142,7 +145,8 @@ def process_task(task: Task, store: InMemoryTaskStore):
     store.update_status(task, TaskState.WORKING, "检索资料并构思论点...")
     parsed, sources = _prepare(task)
     argument = compose_argument(
-        parsed["motion"], parsed["persona"], parsed["stance"], parsed["opponent"], sources
+        parsed["motion"], parsed["persona"], parsed["stance"], parsed["opponent"], sources,
+        parsed.get("inquiry", ""),
     )
     store.add_artifact(task, "argument", argument, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "论点完成")
@@ -152,7 +156,8 @@ def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
     store.update_status(task, TaskState.WORKING, "检索资料并构思论点...")
     parsed, sources = _prepare(task)
     user_prompt = compose_user_prompt(
-        parsed["motion"], parsed["persona"], parsed["stance"], parsed["opponent"], sources
+        parsed["motion"], parsed["persona"], parsed["stance"], parsed["opponent"], sources,
+        parsed.get("inquiry", ""),
     )
     deltas = call_llm_stream(build_system_prompt(), user_prompt, max_tokens=1200)
     emitted = False
