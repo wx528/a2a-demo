@@ -11,6 +11,8 @@ import sys
 from typing import Dict, Iterator, List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.env import load_env
+load_env()
 from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore, collect_user_text
 from shared.llm_client import call_llm, call_llm_stream
 from shared.models import (

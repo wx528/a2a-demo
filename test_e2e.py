@@ -14,6 +14,9 @@ def start_service(name, port, main_file, extra_env=None):
     env = os.environ.copy()
     env["PORT"] = str(port)
     env["HOST"] = "localhost"
+    # 强制回退模式：e2e 断言协议而非内容，避免本地 .env 的真实 key 让测试花钱变慢
+    env["LLM_API_KEY"] = ""
+    env["LLM_BASE_URL"] = ""
     if extra_env:
         env.update(extra_env)
     proc = subprocess.Popen(

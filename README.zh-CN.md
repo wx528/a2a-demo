@@ -243,6 +243,8 @@ export LLM_BASE_URL="https://api.openai.com/v1"
 export LLM_MODEL="gpt-4o-mini"
 ```
 
+也可以直接把 key 填进根目录 `.env`（`cp .env.example .env`）——本地裸跑时服务会自动加载，已 export 的环境变量优先。
+
 ---
 
 ## 测试与 CI

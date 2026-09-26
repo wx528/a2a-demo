@@ -18,6 +18,8 @@ from pydantic import BaseModel
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.env import load_env
+load_env()
 from shared.a2a_client import A2AJSONRPCClient
 import db
 

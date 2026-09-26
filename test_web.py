@@ -14,6 +14,9 @@ def start_service(name, port, main_file, extra_env=None):
     env = os.environ.copy()
     env["PORT"] = str(port)
     env["HOST"] = "localhost"
+    # 强制回退模式：保持测试离线确定性（真 LLM 链路由 test_llm_smoke 覆盖）
+    env["LLM_API_KEY"] = ""
+    env["LLM_BASE_URL"] = ""
     if extra_env:
         env.update(extra_env)
     proc = subprocess.Popen(

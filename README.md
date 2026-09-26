@@ -244,6 +244,9 @@ export LLM_BASE_URL="https://api.openai.com/v1"
 export LLM_MODEL="gpt-4o-mini"
 ```
 
+Or simply put your keys in a root `.env` (`cp .env.example .env`) — services
+auto-load it on local runs; explicitly exported variables take precedence.
+
 ---
 
 ## Testing & CI

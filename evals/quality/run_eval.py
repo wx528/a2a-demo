@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from shared.env import load_env
+load_env()
 import httpx
 
 from debate.personas import PERSONAS

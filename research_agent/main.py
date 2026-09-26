@@ -8,6 +8,8 @@ import sys
 from typing import Iterator
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from shared.env import load_env
+load_env()
 from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore, collect_user_text
 from shared.models import (
     AgentCapabilities,
