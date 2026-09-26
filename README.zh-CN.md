@@ -281,16 +281,17 @@ docker compose up -d
 
 ### 使用流程
 
-1. 输入会议主题（例如：`Kubernetes`、`A2A protocol`）
+1. 输入会议主题（例如：`Kubernetes`、`A2A protocol`），选择模式：流水线 / 圆桌 / **辩论**（人格下拉选正反方，1-3 轮）
 2. 创建会议室
-3. 观察 Research Agent 和 Writing Agent 依次发言
-4. 你可以在底部输入框继续提问，Agent 会继续响应
+3. **默认步进模式**：每个 Agent 发言前暂停，点「▶ 继续」推进；也可随时在输入框插入发言（辩论中成为观众质询），发送后自动继续
+4. 一键切换「⏩ 自动连播」（等价旧行为）或「⏸ 切换为步进」
+5. 辩论模式的裁判总结以独立卡片渲染，引用链接可点击
 
 ### 技术实现
 
-- **后端**：FastAPI + SSE（Server-Sent Events）实时推送
-- **前端**：React（CDN 版）+ Tailwind CSS
-- **A2A 调用**：会议室中的每个 Agent 发言都通过 `POST /rpc` 发送 `SendMessage` 给 `research-agent` 或 `writing-agent`
+- **后端**：FastAPI + SSE；逐轮驱动 API（`POST /api/meetings/{id}/turns/next` 一次执行一轮并以 `turn_done` 收尾），自动/步进共用同一接口
+- **前端**：React（CDN 版）+ Tailwind CSS；turn SSE 用 fetch 流式解析
+- **A2A 调用**：Agent 发言通过 `POST /rpc` 发送 `SendMessage` 给对应 agent；辩论模式接 `debate-agent`（`DEBATE_AGENT_URL`）
 - **实时状态**：Agent 会显示"思考中"、"发言中"、"等待中"等状态
 
 ---

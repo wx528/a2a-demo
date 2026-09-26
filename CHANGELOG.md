@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Web 会议室**步进模式（默认）**：逐轮驱动 API（`POST /turns/next` 一次执行一轮，`turn_done` 收尾），发言前暂停可插入用户发言（辩论中成为观众质询），一键切换自动连播；`GET /next-turn` 预览下一位，`GET /api/personas` 人格列表
+- Web 会议室**辩论模式**：正/反方人格下拉（苏格拉底/休谟/康德/尼采/怀疑论工程师/风险投资人）+ 1-3 轮 + 裁判总结卡片，引用可点击；接 `debate-agent`（`DEBATE_AGENT_URL`）
+- debate-agent 输入契约新增可选 `[观众质询/INQUIRY]` 段
+- web 数据库幂等迁移（auto_play/pro_persona/con_persona/turn_state），支持 `A2A_WEB_DB_DIR` 覆盖
+
+### Changed
+
+- 移除旧 `/api/meetings/{id}/run` 与阻塞式 SSE 流程（`/events` 仅保留初始快照 + 心跳）；`test_web.py` 迁移至逐轮驱动
+
 ### Changed
 
 - DeepSeek 默认模型更新为 `deepseek-flash`（`deepseek-chat` 已退役，虽仍被服务端兼容接收），默认 `LLM_BASE_URL` 对齐官方文档改为 `https://api.deepseek.com`

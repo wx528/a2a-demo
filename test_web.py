@@ -1,10 +1,10 @@
 """Web 会议室 A2A 集成测试：启动 web + agent 服务，验证 SSE 流程。"""
 
+import json
 import os
 import subprocess
 import sys
 import time
-
 import httpx
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -92,37 +92,36 @@ def main():
         with httpx.Client(trust_env=False, timeout=10) as client:
             r = client.post(
                 "http://localhost:8080/api/meetings",
-                json={"topic": "docker", "mode": "pipeline"},
+                json={"topic": "docker", "mode": "pipeline", "auto_play": False},
             )
         r.raise_for_status()
         meeting = r.json()
         meeting_id = meeting["id"]
         print(f"[OK] created meeting: {meeting_id}")
 
-        # 读取 SSE 流一段时间，收集 agent 发言
-        with httpx.Client(trust_env=False, timeout=120) as client:
-            with client.stream(
-                "GET", f"http://localhost:8080/api/meetings/{meeting_id}/events"
-            ) as stream:
-                # 读取足够字节数后关闭（流不会自己结束，除非 meeting 结束）
-                collected = []
-                for chunk in stream.iter_text():
-                    collected.append(chunk)
-                    # research + writing + review + code + summary 每个 agent 都会有 message 事件
-                    if len("".join(collected)) > 3000:
-                        break
-                sse_text = "".join(collected)
-
-        events = parse_sse_events(sse_text)
-        message_events = [e for e in events if e[0] == "message"]
+        # 逐轮驱动（turn API），收集 agent 发言
         agent_speakers = set()
-        for event, data in message_events:
-            try:
-                msg = __import__("json").loads(data)
-                if msg.get("participant_id") in ["research", "writing", "review", "code", "summary"]:
-                    agent_speakers.add(msg["participant_id"])
-            except Exception:
-                pass
+        with httpx.Client(trust_env=False, timeout=120) as client:
+            for _ in range(10):
+                peek = client.get(
+                    f"http://localhost:8080/api/meetings/{meeting_id}/next-turn"
+                ).json()
+                if peek["done"]:
+                    break
+                with client.stream(
+                    "POST",
+                    f"http://localhost:8080/api/meetings/{meeting_id}/turns/next",
+                ) as stream:
+                    sse_text = stream.read().decode("utf-8")
+                for event, data in parse_sse_events(sse_text):
+                    if event != "message":
+                        continue
+                    try:
+                        msg = json.loads(data)
+                        if msg.get("participant_id") in ["research", "writing", "review", "code", "summary"]:
+                            agent_speakers.add(msg["participant_id"])
+                    except Exception:
+                        pass
 
         print(f"[OK] agent speakers observed: {agent_speakers}")
         assert "research" in agent_speakers, "research should speak"

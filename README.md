@@ -283,16 +283,17 @@ Visit: http://localhost:8080
 
 ### Flow
 
-1. Enter a meeting topic (e.g. `Kubernetes`, `A2A protocol`)
+1. Enter a meeting topic (e.g. `Kubernetes`, `A2A protocol`) and pick a mode: pipeline / roundtable / **debate** (persona dropdowns for both sides, 1-3 rounds)
 2. Create the meeting room
-3. Watch the Research and Writing agents speak in turn
-4. Keep asking questions in the input box; agents will respond
+3. **Step mode is the default**: the room pauses before every agent turn — click "▶ 继续" to advance, or type into the input box first (in debates this becomes an audience inquiry the next speaker must address) and it auto-continues on send
+4. One-click "⏩ 自动连播" (auto-play, the old continuous behavior) / "⏸ 切换为步进" at any time
+5. In debate mode the judge verdict renders as a distinct card; citation links are clickable
 
 ### Implementation
 
-- **Backend**: FastAPI + SSE (Server-Sent Events) live push
-- **Frontend**: React (CDN build) + Tailwind CSS
-- **A2A calls**: every agent turn goes through `POST /rpc` `SendMessage` to `research-agent` / `writing-agent`
+- **Backend**: FastAPI + SSE; turn-driven API (`POST /api/meetings/{id}/turns/next` executes exactly one turn and ends with `turn_done`) — step and auto share the same endpoint
+- **Frontend**: React (CDN build) + Tailwind CSS; turn SSE parsed via fetch streaming
+- **A2A calls**: agent turns go through `POST /rpc` `SendMessage`; debate mode talks to `debate-agent` (`DEBATE_AGENT_URL`)
 - **Live status**: agents show "thinking", "speaking", "waiting" states
 
 ---
