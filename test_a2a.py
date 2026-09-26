@@ -479,6 +479,67 @@ def test_research_streaming_failure_marks_failed(monkeypatch):
     print("[OK] research streaming failure -> TASK_STATE_FAILED")
 
 
+def test_cancel_race_keeps_canceled_state():
+    """取消 WORKING 任务后，工作线程迟到的完成写入不得覆盖 CANCELED。
+
+    用 ASGITransport + 持久事件循环，保证 returnImmediately 的后台任务真实运行。
+    """
+    import asyncio
+    import httpx
+    from shared.models import Task, TaskState
+
+    def slow_complete(task: Task, store):
+        store.update_status(task, TaskState.WORKING, "working...")
+        time.sleep(0.8)
+        store.add_artifact(task, "response", "late result")
+        store.update_status(task, TaskState.COMPLETED, "done")
+
+    app = _build_test_agent(slow_complete)
+
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            r = await ac.post(
+                "/rpc",
+                json={
+                    "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
+                    "params": {
+                        "message": {"messageId": "m-cancel", "role": "ROLE_USER",
+                                    "parts": [{"text": "hello"}]},
+                        "configuration": {"returnImmediately": True},
+                    },
+                },
+            )
+            task = r.json()["result"]
+            await asyncio.sleep(0.4)  # worker 已进入 WORKING
+            r2 = await ac.post(
+                "/rpc",
+                json={"jsonrpc": "2.0", "id": 2, "method": "CancelTask",
+                      "params": {"id": task["id"]}},
+            )
+            assert r2.json()["result"]["status"]["state"] == "TASK_STATE_CANCELED"
+            await asyncio.sleep(0.8)  # worker 迟到的 add_artifact / COMPLETED
+            r3 = await ac.post(
+                "/rpc",
+                json={"jsonrpc": "2.0", "id": 3, "method": "GetTask",
+                      "params": {"id": task["id"]}},
+            )
+            return r3.json()["result"]
+
+    final = asyncio.run(scenario())
+    assert final["status"]["state"] == "TASK_STATE_CANCELED", final["status"]
+    assert not final.get("artifacts"), "late artifact must not land after cancel"
+
+
+def test_cancel_unknown_task_error_code():
+    """CancelTask 的任务未找到错误码必须与 GetTask 一致（-32001）。"""
+    client = TestClient(research_app)
+    rpc_resp = rpc(client, "CancelTask", {"id": "nonexistent-id"})
+    err = rpc_resp["error"]
+    assert err["code"] == -32001, err
+    assert err["data"][0]["reason"] == "TASK_NOT_FOUND"
+
+
 if __name__ == "__main__":
     test_model_serialization()
     test_agent_card_canonical_path()

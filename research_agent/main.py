@@ -8,13 +8,12 @@ import sys
 from typing import Iterator
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore
+from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore, collect_user_text
 from shared.models import (
     AgentCapabilities,
     AgentCard,
     AgentInterface,
     AgentSkill,
-    Role,
     Task,
     TaskState,
 )
@@ -43,23 +42,13 @@ def generate_response(user_text: str) -> str:
     return "（当前 LLM 服务不可用，无法生成回答。）"
 
 
-def _collect_user_text(task: Task) -> str:
-    user_text = ""
-    for msg in task.history:
-        if msg.role == Role.USER:
-            for part in msg.parts:
-                if part.text:
-                    user_text += part.text
-    return user_text
-
-
 def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
     """流式版本：增量产出 LLM token；LLM 不可用时整段回退。
 
     注意：流中途抛出的异常直接上抛，由框架将任务标记为 TASK_STATE_FAILED，
     不得静默截断（否则任务会带着不完整输出假装完成）。
     """
-    user_text = _collect_user_text(task)
+    user_text = collect_user_text(task)
     deltas = call_llm_stream(DEFAULT_SYSTEM_PROMPT, user_text)
     fallback = "（当前 LLM 服务不可用，无法生成回答。）"
     if deltas is None:
@@ -79,7 +68,7 @@ def process_task(task: Task, store: InMemoryTaskStore):
     """研究 Agent 的核心处理逻辑。"""
     store.update_status(task, TaskState.WORKING, "正在研究...")
 
-    response = generate_response(_collect_user_text(task))
+    response = generate_response(collect_user_text(task))
     store.add_artifact(task, "response", response, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "研究完成")
 

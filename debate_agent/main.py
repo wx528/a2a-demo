@@ -11,14 +11,13 @@ import sys
 from typing import Dict, Iterator, List
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore
+from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore, collect_user_text
 from shared.llm_client import call_llm, call_llm_stream
 from shared.models import (
     AgentCapabilities,
     AgentCard,
     AgentInterface,
     AgentSkill,
-    Role,
     Task,
     TaskState,
 )
@@ -128,19 +127,9 @@ def compose_argument(motion, persona, stance, opponent, sources) -> str:
     return _NO_LLM_FALLBACK
 
 
-def _collect_user_text(task: Task) -> str:
-    user_text = ""
-    for msg in task.history:
-        if msg.role == Role.USER:
-            for part in msg.parts:
-                if part.text:
-                    user_text += part.text
-    return user_text
-
-
 def _prepare(task: Task):
     """解析输入并检索资料；缺辩题直接抛错（由框架兜底为 FAILED）。"""
-    parsed = parse_debate_input(_collect_user_text(task))
+    parsed = parse_debate_input(collect_user_text(task))
     if not parsed["motion"]:
         raise ValueError("输入缺少 [辩题/MOTION] 段落")
     sources = gather_sources(parsed["motion"], parsed["opponent"])

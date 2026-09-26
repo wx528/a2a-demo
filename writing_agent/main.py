@@ -7,13 +7,12 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore
+from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore, collect_user_text
 from shared.models import (
     AgentCapabilities,
     AgentCard,
     AgentInterface,
     AgentSkill,
-    Role,
     Task,
     TaskState,
 )
@@ -45,14 +44,7 @@ def process_task(task: Task, store: InMemoryTaskStore):
     """写作 Agent 的核心处理逻辑。"""
     store.update_status(task, TaskState.WORKING, "正在写作...")
 
-    user_text = ""
-    for msg in task.history:
-        if msg.role == Role.USER:
-            for part in msg.parts:
-                if part.text:
-                    user_text += part.text
-
-    response = generate_response(user_text)
+    response = generate_response(collect_user_text(task))
     store.add_artifact(task, "response", response, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "写作完成")
 

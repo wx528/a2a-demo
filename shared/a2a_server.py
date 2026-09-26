@@ -88,6 +88,17 @@ def _extract_text(message: Message) -> str:
     return "\n".join(texts)
 
 
+def collect_user_text(task: Task) -> str:
+    """汇总任务历史中所有用户消息文本（各 agent 共用的输入提取工具）。"""
+    user_text = ""
+    for msg in task.history:
+        if msg.role == Role.USER:
+            for part in msg.parts:
+                if part.text:
+                    user_text += part.text
+    return user_text
+
+
 # 终态：不能再接收后续消息（A2A 规范 3.1.1）
 _TERMINAL_STATES = (
     TaskState.COMPLETED,
@@ -105,6 +116,8 @@ class InMemoryTaskStore:
 
     def __init__(self):
         self._tasks: Dict[str, Task] = {}
+        # 任务对象会被工作线程（process_task/流式）与事件循环并发读写
+        self._lock = threading.RLock()
 
     def get(self, task_id: str) -> Optional[Task]:
         return self._tasks.get(task_id)
@@ -126,51 +139,59 @@ class InMemoryTaskStore:
         return len(self._tasks)
 
     def create(self, message: Message) -> Task:
-        task_id = str(uuid.uuid4())
-        context_id = message.context_id or str(uuid.uuid4())
-        user_msg = Message(
-            message_id=message.message_id or str(uuid.uuid4()),
-            context_id=context_id,
-            task_id=task_id,
-            role=Role.USER,
-            parts=message.parts,
-            metadata=message.metadata,
-        )
-        history = [user_msg]
-        # 上下文续聊：同一 contextId 的新任务继承最近任务的对话历史
-        if message.context_id:
-            prior_history = None
-            for t in self._tasks.values():
-                if t.context_id == context_id and t.history:
-                    prior_history = t.history
-            if prior_history:
-                history = list(prior_history[-_CONTEXT_HISTORY_LIMIT:]) + [user_msg]
-        task = Task(
-            id=task_id,
-            context_id=context_id,
-            status=_task_status(TaskState.SUBMITTED, "任务已提交"),
-            history=history,
-        )
-        self._tasks[task_id] = task
-        return task
+        with self._lock:
+            task_id = str(uuid.uuid4())
+            context_id = message.context_id or str(uuid.uuid4())
+            user_msg = Message(
+                message_id=message.message_id or str(uuid.uuid4()),
+                context_id=context_id,
+                task_id=task_id,
+                role=Role.USER,
+                parts=message.parts,
+                metadata=message.metadata,
+            )
+            history = [user_msg]
+            # 上下文续聊：同一 contextId 的新任务继承最近任务的对话历史
+            if message.context_id:
+                prior_history = None
+                for t in self._tasks.values():
+                    if t.context_id == context_id and t.history:
+                        prior_history = t.history
+                if prior_history:
+                    history = list(prior_history[-_CONTEXT_HISTORY_LIMIT:]) + [user_msg]
+            task = Task(
+                id=task_id,
+                context_id=context_id,
+                status=_task_status(TaskState.SUBMITTED, "任务已提交"),
+                history=history,
+            )
+            self._tasks[task_id] = task
+            return task
 
     def append_user_message(self, task: Task, message: Message):
         """多轮续聊：向既有任务追加用户消息，并回到 WORKING 状态。"""
-        user_msg = Message(
-            message_id=message.message_id or str(uuid.uuid4()),
-            context_id=task.context_id,
-            task_id=task.id,
-            role=Role.USER,
-            parts=message.parts,
-            metadata=message.metadata,
-        )
-        task.history.append(user_msg)
-        task.status = _task_status(TaskState.WORKING, "收到新消息，继续处理")
+        with self._lock:
+            if task.status.state in _TERMINAL_STATES:
+                return  # 终态任务不接受续聊
+            user_msg = Message(
+                message_id=message.message_id or str(uuid.uuid4()),
+                context_id=task.context_id,
+                task_id=task.id,
+                role=Role.USER,
+                parts=message.parts,
+                metadata=message.metadata,
+            )
+            task.history.append(user_msg)
+            task.status = _task_status(TaskState.WORKING, "收到新消息，继续处理")
 
     def update_status(
         self, task: Task, state: TaskState, text: Optional[str] = None
     ):
-        task.status = _task_status(state, text)
+        with self._lock:
+            if task.status.state in _TERMINAL_STATES:
+                # 终态不可逆：工作线程迟到写入（如取消后完成）直接忽略
+                return
+            task.status = _task_status(state, text)
 
     def add_artifact(
         self,
@@ -179,18 +200,21 @@ class InMemoryTaskStore:
         text: str,
         media_type: str = "text/plain",
     ):
-        artifact = artifact_from_text(name, text, media_type)
-        if task.artifacts is None:
-            task.artifacts = []
-        task.artifacts.append(artifact)
-        agent_msg = Message(
-            message_id=str(uuid.uuid4()),
-            context_id=task.context_id,
-            task_id=task.id,
-            role=Role.AGENT,
-            parts=[text_part(text, media_type)],
-        )
-        task.history.append(agent_msg)
+        with self._lock:
+            if task.status.state in _TERMINAL_STATES:
+                return  # 已终态（如被取消）：迟到的产物不落地
+            artifact = artifact_from_text(name, text, media_type)
+            if task.artifacts is None:
+                task.artifacts = []
+            task.artifacts.append(artifact)
+            agent_msg = Message(
+                message_id=str(uuid.uuid4()),
+                context_id=task.context_id,
+                task_id=task.id,
+                role=Role.AGENT,
+                parts=[text_part(text, media_type)],
+            )
+            task.history.append(agent_msg)
 
 
 class _StreamError:
@@ -302,7 +326,7 @@ class A2AJSONRPCServer:
         task = self.store.get(req.id)
         if not task:
             raise JSONRPCErrorException(
-                _rpc_error(-32100, "Task not found", "TaskNotFoundError")
+                _rpc_error(-32001, "Task not found", "TaskNotFoundError")
             )
         if task.status.state in (
             TaskState.COMPLETED,
