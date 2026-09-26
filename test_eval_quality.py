@@ -131,10 +131,10 @@ def test_judge_env_fallback(monkeypatch):
     monkeypatch.delenv("JUDGE_BASE_URL", raising=False)
     monkeypatch.delenv("JUDGE_MODEL", raising=False)
     monkeypatch.setenv("LLM_API_KEY", "sk-x")
-    monkeypatch.setenv("LLM_MODEL", "deepseek-chat")
+    monkeypatch.setenv("LLM_MODEL", "deepseek-flash")
     j = Judge()
     assert j.self_judged is True
-    assert j.model == "deepseek-chat"
+    assert j.model == "deepseek-flash"
     assert j.available is True
 
     monkeypatch.setenv("JUDGE_API_KEY", "sk-judge")

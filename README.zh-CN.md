@@ -100,8 +100,8 @@ vim .env
 **DeepSeek：**
 ```bash
 export LLM_API_KEY="sk-..."
-export LLM_BASE_URL="https://api.deepseek.com/v1"
-export LLM_MODEL="deepseek-chat"
+export LLM_BASE_URL="https://api.deepseek.com"
+export LLM_MODEL="deepseek-flash"
 ```
 
 **SiliconFlow：**
@@ -258,7 +258,7 @@ export LLM_MODEL="gpt-4o-mini"
 
 CI（GitHub Actions）：
 - **CI**（每次 push/PR）：ruff + 全部离线测试，不消耗 LLM 额度
-- **LLM Smoke**（push main / 手动触发）：用真实 key 验证非回退输出与真流式；需在仓库 Secrets 配置 `LLM_API_KEY`（DeepSeek），可用 Variables 覆盖 `LLM_BASE_URL`/`LLM_MODEL`（默认 `https://api.deepseek.com/v1` / `deepseek-chat`）
+- **LLM Smoke**（push main / 手动触发）：用真实 key 验证非回退输出与真流式；需在仓库 Secrets 配置 `LLM_API_KEY`（DeepSeek），可用 Variables 覆盖 `LLM_BASE_URL`/`LLM_MODEL`（默认 `https://api.deepseek.com` / `deepseek-flash`）
 
 ---
 

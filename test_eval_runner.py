@@ -38,10 +38,10 @@ def test_aggregate_empty():
 
 def test_build_markdown_contains_everything():
     meta = {"date": "2026-09-26T00:00:00Z", "git": "abc1234",
-            "llm_model": "deepseek-chat", "judge_model": "gpt-4o", "self_judged": False}
+            "llm_model": "deepseek-flash", "judge_model": "gpt-4o", "self_judged": False}
     s = aggregate(ROWS)
     md = build_markdown(meta, s, ROWS)
-    for needle in ["abc1234", "deepseek-chat", "gpt-4o", "题A", "陷阱B",
+    for needle in ["abc1234", "deepseek-flash", "gpt-4o", "题A", "陷阱B",
                    "citation_coverage", "trap_pass_rate", "1.0"]:
         assert needle in md, needle
 

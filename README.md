@@ -101,8 +101,8 @@ vim .env
 **DeepSeek:**
 ```bash
 export LLM_API_KEY="sk-..."
-export LLM_BASE_URL="https://api.deepseek.com/v1"
-export LLM_MODEL="deepseek-chat"
+export LLM_BASE_URL="https://api.deepseek.com"
+export LLM_MODEL="deepseek-flash"
 ```
 
 **SiliconFlow:**
@@ -260,7 +260,7 @@ auto-load it on local runs; explicitly exported variables take precedence.
 
 CI (GitHub Actions):
 - **CI** (every push/PR): ruff + all offline tests, no LLM cost
-- **LLM Smoke** (push to main / manual): verifies non-fallback output and real streaming with a live key; requires the `LLM_API_KEY` secret (DeepSeek), overridable via Variables `LLM_BASE_URL`/`LLM_MODEL` (defaults: `https://api.deepseek.com/v1` / `deepseek-chat`)
+- **LLM Smoke** (push to main / manual): verifies non-fallback output and real streaming with a live key; requires the `LLM_API_KEY` secret (DeepSeek), overridable via Variables `LLM_BASE_URL`/`LLM_MODEL` (defaults: `https://api.deepseek.com` / `deepseek-flash`)
 
 ---
 

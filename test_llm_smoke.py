@@ -6,7 +6,7 @@
 3. orchestrator 完整工作流（research -> writing）
 
 用法：
-    LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com/v1 LLM_MODEL=deepseek-chat \
+    LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-flash \
         uv run python test_llm_smoke.py
 """
 

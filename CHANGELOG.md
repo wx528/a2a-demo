@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- DeepSeek 默认模型更新为 `deepseek-flash`（`deepseek-chat` 已退役，虽仍被服务端兼容接收），默认 `LLM_BASE_URL` 对齐官方文档改为 `https://api.deepseek.com`
+
 ### Fixed
 
 - `research-agent` 流式输出中途失败不再静默截断：异常上抛，任务正确落 `TASK_STATE_FAILED`
