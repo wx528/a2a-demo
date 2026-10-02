@@ -4,11 +4,13 @@ import { CreateMeetingDialog } from "@/components/CreateMeetingDialog"
 import { HeroHome } from "@/components/HeroHome"
 import { MessageList } from "@/components/MessageList"
 import { ParticipantBar } from "@/components/ParticipantBar"
+import { RightRail } from "@/components/RightRail"
 import { RoomHeader } from "@/components/RoomHeader"
 import { Sidebar } from "@/components/Sidebar"
 import { TurnControlBar } from "@/components/TurnControlBar"
 import { useMeetings } from "@/hooks/useMeetings"
 import { useMeetingRoom } from "@/hooks/useMeetingRoom"
+import { buildProgress } from "@/lib/sequence"
 import type { Meeting } from "@/types"
 
 function updateUrl(meetingId: string | null) {
@@ -68,23 +70,40 @@ export default function App() {
           <HeroHome onCreate={() => setCreateOpen(true)} />
         ) : (
           <>
-            <RoomHeader meeting={room.meeting} connected={room.connected} onClose={closeMeeting} />
-            {room.meeting && <ParticipantBar participants={room.meeting.participants} />}
-            <TurnControlBar
-              turnInfo={room.turnInfo}
-              turnRunning={room.turnRunning}
-              autoPlay={room.autoPlay}
-              onToggleAutoPlay={room.setAutoPlay}
-              onContinue={() => void room.runNextTurn()}
+            <RoomHeader
+              meeting={room.meeting}
+              connected={room.connected}
+              sseLatencyMs={room.sseLatencyMs}
+              onClose={closeMeeting}
             />
-            {room.meeting ? (
-              <MessageList meeting={room.meeting} />
-            ) : (
-              <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                正在加载会议室…
-              </div>
+            {room.meeting && <ParticipantBar participants={room.meeting.participants} />}
+            {room.meeting && (
+              <TurnControlBar
+                turnInfo={room.turnInfo}
+                turnRunning={room.turnRunning}
+                autoPlay={room.autoPlay}
+                progress={buildProgress(room.meeting)}
+                onToggleAutoPlay={room.setAutoPlay}
+                onContinue={() => void room.runNextTurn()}
+              />
             )}
-            <ChatInput onSend={room.sendMessage} />
+            <div className="flex min-h-0 flex-1">
+              <div className="flex min-w-0 flex-1 flex-col">
+                {room.meeting ? (
+                  <MessageList meeting={room.meeting} />
+                ) : (
+                  <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                    正在加载会议室…
+                  </div>
+                )}
+                <ChatInput onSend={room.sendMessage} />
+              </div>
+              {room.meeting && (
+                <aside className="hidden w-[280px] shrink-0 overflow-y-auto border-l p-4 xl:block">
+                  <RightRail meeting={room.meeting} sseLatencyMs={room.sseLatencyMs} />
+                </aside>
+              )}
+            </div>
           </>
         )}
       </div>

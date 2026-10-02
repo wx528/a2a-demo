@@ -25,12 +25,12 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       <Button
         variant="ghost"
         size="icon"
-        className="absolute right-2 top-2 z-10 h-7 w-7 text-zinc-300 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-800 hover:text-zinc-100"
+        className="absolute right-2 top-2 z-10 h-7 w-7 text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-zinc-800 hover:text-zinc-100"
         onClick={() => void copy()}
       >
         {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
       </Button>
-      <pre ref={preRef} className="overflow-x-auto rounded-lg bg-zinc-950 p-4 text-xs leading-relaxed text-zinc-50">
+      <pre ref={preRef} className="overflow-x-auto rounded-[10px] bg-[#05070d] p-4 font-mono text-xs leading-relaxed text-[#e6edf3]">
         {children}
       </pre>
     </div>

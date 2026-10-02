@@ -1,5 +1,16 @@
 import type { Meeting, MeetingMode } from "@/types"
 
+export function roleTagFor(meeting: Meeting, participantId: string): string | undefined {
+  if (meeting.mode === "debate") {
+    if (participantId === meeting.pro_persona) return "正方"
+    if (participantId === meeting.con_persona) return "反方"
+    if (participantId === "judge") return "裁判"
+    return undefined
+  }
+  if (meeting.mode === "roundtable" && participantId === "moderator") return "主持"
+  return undefined
+}
+
 export function modeBadgeText(mode: MeetingMode, maxRounds: number): string {
   if (mode === "roundtable") return `圆桌 · ${maxRounds}轮`
   if (mode === "debate") return `辩论 · ${maxRounds}轮`

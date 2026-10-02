@@ -29,25 +29,30 @@ export function ChatInput({ onSend }: { onSend: (content: string) => Promise<boo
   }
 
   return (
-    <footer className="border-t bg-card p-4">
-      <div className="mx-auto flex max-w-4xl items-end gap-3">
-        <Textarea
-          ref={ref}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="继续提问或追加需求...（Enter 发送，Shift+Enter 换行）"
-          rows={1}
-          className="max-h-40 min-h-11 resize-none"
-        />
-        <Button
-          size="icon"
-          className="h-11 w-11 shrink-0"
-          onClick={() => void send()}
-          disabled={sending || !value.trim()}
-        >
-          {sending ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
-        </Button>
+    <footer className="border-t bg-card/60 px-6 py-4 backdrop-blur">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex items-end gap-3">
+          <Textarea
+            ref={ref}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="输入你的观点或质询…"
+            rows={1}
+            className="max-h-40 min-h-12 resize-none rounded-[28px] px-5 py-3"
+          />
+          <Button
+            size="icon"
+            className="h-12 w-12 shrink-0 rounded-full shadow-glow"
+            onClick={() => void send()}
+            disabled={sending || !value.trim()}
+          >
+            {sending ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
+          </Button>
+        </div>
+        <div className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
+          Enter 发送 · Shift+Enter 换行
+        </div>
       </div>
     </footer>
   )
