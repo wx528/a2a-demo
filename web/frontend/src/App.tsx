@@ -1,122 +1,97 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useState } from "react"
+import { ChatInput } from "@/components/ChatInput"
+import { CreateMeetingDialog } from "@/components/CreateMeetingDialog"
+import { HomeEmptyState } from "@/components/HomeEmptyState"
+import { MessageList } from "@/components/MessageList"
+import { ParticipantBar } from "@/components/ParticipantBar"
+import { RoomHeader } from "@/components/RoomHeader"
+import { Sidebar } from "@/components/Sidebar"
+import { TurnControlBar } from "@/components/TurnControlBar"
+import { useMeetings } from "@/hooks/useMeetings"
+import { useMeetingRoom } from "@/hooks/useMeetingRoom"
+import type { Meeting } from "@/types"
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function updateUrl(meetingId: string | null) {
+  const url = new URL(window.location.href)
+  if (meetingId) url.searchParams.set("meeting", meetingId)
+  else url.searchParams.delete("meeting")
+  window.history.replaceState({}, "", url)
 }
 
-export default App
+export default function App() {
+  const [meetingId, setMeetingId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("meeting"),
+  )
+  const [createOpen, setCreateOpen] = useState(false)
+  const { meetings, refresh, remove } = useMeetings()
+  const room = useMeetingRoom(meetingId)
+
+  const openMeeting = useCallback((id: string) => {
+    setMeetingId(id)
+    updateUrl(id)
+  }, [])
+
+  const closeMeeting = useCallback(() => {
+    setMeetingId(null)
+    updateUrl(null)
+  }, [])
+
+  const handleCreated = useCallback(
+    (meeting: Meeting) => {
+      setCreateOpen(false)
+      void refresh()
+      openMeeting(meeting.id)
+    },
+    [refresh, openMeeting],
+  )
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const ok = await remove(id)
+      if (ok && id === meetingId) closeMeeting()
+    },
+    [remove, meetingId, closeMeeting],
+  )
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <Sidebar
+        meetings={meetings}
+        activeId={meetingId}
+        onOpen={openMeeting}
+        onCreate={() => setCreateOpen(true)}
+        onDelete={(id) => void handleDelete(id)}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        {!meetingId ? (
+          <HomeEmptyState onCreate={() => setCreateOpen(true)} />
+        ) : (
+          <>
+            <RoomHeader meeting={room.meeting} connected={room.connected} onClose={closeMeeting} />
+            {room.meeting && <ParticipantBar participants={room.meeting.participants} />}
+            <TurnControlBar
+              turnInfo={room.turnInfo}
+              turnRunning={room.turnRunning}
+              autoPlay={room.autoPlay}
+              onToggleAutoPlay={room.setAutoPlay}
+              onContinue={() => void room.runNextTurn()}
+            />
+            {room.meeting ? (
+              <MessageList meeting={room.meeting} />
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                正在加载会议室…
+              </div>
+            )}
+            <ChatInput onSend={room.sendMessage} />
+          </>
+        )}
+      </div>
+      <CreateMeetingDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={handleCreated}
+      />
+    </div>
+  )
+}
