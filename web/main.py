@@ -89,6 +89,7 @@ class Meeting(BaseModel):
     auto_play: bool = False  # 默认步进
     pro_persona: str = ""
     con_persona: str = ""
+    inquiry_enabled: bool = True  # 辩论模式：是否附带观众质询
     turn_state: Dict = {}
     created_at: str
     participants: List[Participant]
@@ -163,7 +164,7 @@ def now() -> str:
 
 def create_meeting(topic: str, mode: str = "pipeline", max_rounds: int = 1,
                    auto_play: bool = False, pro_persona: str = "socrates",
-                   con_persona: str = "hume") -> Meeting:
+                   con_persona: str = "hume", inquiry_enabled: bool = True) -> Meeting:
     meeting_id = str(uuid.uuid4())[:8]
 
     if mode == "debate":
@@ -206,6 +207,7 @@ def create_meeting(topic: str, mode: str = "pipeline", max_rounds: int = 1,
         auto_play=auto_play,
         pro_persona=pro_persona if mode == "debate" else "",
         con_persona=con_persona if mode == "debate" else "",
+        inquiry_enabled=inquiry_enabled,
         created_at=now(),
         participants=participants,
         messages=[
@@ -476,7 +478,7 @@ async def _run_debate_step(meeting_id: str, spec: dict):
             f"[对手论点/OPPONENT_ARGUMENTS]\n{opponent}"
         )
     inquiry = _pending_inquiry(meeting)
-    if inquiry and spec["kind"] != "judge":
+    if inquiry and meeting.inquiry_enabled and spec["kind"] != "judge":
         msg_text += f"\n[观众质询/INQUIRY]\n{inquiry}"
 
     result = await call_debate_agent(msg_text)
@@ -589,6 +591,7 @@ class CreateMeetingRequest(BaseModel):
     auto_play: bool = False
     pro_persona: str = "socrates"
     con_persona: str = "hume"
+    inquiry_enabled: bool = True
 
 
 @app.post("/api/meetings")
@@ -601,7 +604,7 @@ async def create_meeting_api(req: CreateMeetingRequest):
     meeting = create_meeting(
         req.topic, mode=req.mode, max_rounds=max_rounds,
         auto_play=req.auto_play, pro_persona=req.pro_persona,
-        con_persona=req.con_persona,
+        con_persona=req.con_persona, inquiry_enabled=req.inquiry_enabled,
     )
     return meeting.model_dump()
 

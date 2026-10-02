@@ -20,6 +20,7 @@ export interface CreateMeetingBody {
   auto_play: boolean
   pro_persona: string
   con_persona: string
+  inquiry_enabled: boolean
 }
 
 export const api = {

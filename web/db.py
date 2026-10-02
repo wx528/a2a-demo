@@ -79,6 +79,7 @@ def _migrate(conn):
         "pro_persona": "TEXT DEFAULT ''",
         "con_persona": "TEXT DEFAULT ''",
         "turn_state": "TEXT DEFAULT '{}'",
+        "inquiry_enabled": "INTEGER DEFAULT 1",
     }
     for col, decl in additions.items():
         if col not in existing:
@@ -94,8 +95,8 @@ def save_meeting(meeting: Dict):
             """
             INSERT OR REPLACE INTO meetings
                 (id, topic, mode, max_rounds, created_at, status,
-                 auto_play, pro_persona, con_persona, turn_state)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 auto_play, pro_persona, con_persona, turn_state, inquiry_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 meeting["id"],
@@ -108,6 +109,7 @@ def save_meeting(meeting: Dict):
                 meeting.get("pro_persona", ""),
                 meeting.get("con_persona", ""),
                 json.dumps(meeting.get("turn_state") or {}, ensure_ascii=False),
+                1 if meeting.get("inquiry_enabled", True) else 0,
             ),
         )
         # 覆盖参与者
@@ -186,6 +188,7 @@ def get_meeting(meeting_id: str) -> Optional[Dict]:
 
         meeting = dict(row)
         meeting["auto_play"] = bool(meeting.get("auto_play"))
+        meeting["inquiry_enabled"] = bool(meeting.get("inquiry_enabled", 1))
         try:
             meeting["turn_state"] = json.loads(meeting.get("turn_state") or "{}")
         except (json.JSONDecodeError, TypeError):
