@@ -27,10 +27,12 @@ export interface Meeting {
   auto_play: boolean
   pro_persona: string
   con_persona: string
+  inquiry_enabled: boolean
   created_at: string
   participants: Participant[]
   messages: ChatMessage[]
   status: string
+  turn_state?: { seq_index?: number; topic_override?: string }
 }
 
 export interface MeetingSummary {
