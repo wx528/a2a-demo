@@ -54,7 +54,7 @@
 ├── web/                    # 会议室 Web 演示
 │   ├── main.py
 │   ├── db.py               # 会议 SQLite 持久化
-│   ├── static/index.html
+│   ├── frontend/          # Vite + React + shadcn/ui（构建产物 dist/）
 │   └── Dockerfile
 ├── .github/workflows/      # CI + LLM 冒烟测试
 ├── docker-compose.yml

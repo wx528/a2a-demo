@@ -55,7 +55,7 @@ All agents expose the A2A protocol over **JSON-RPC 2.0** (aligned with the [A2A 
 ├── web/                    # Meeting room web demo
 │   ├── main.py
 │   ├── db.py               # SQLite persistence for meetings
-│   ├── static/index.html
+│   ├── frontend/          # Vite + React + shadcn/ui (built to dist/)
 │   └── Dockerfile
 ├── .github/workflows/      # CI + LLM smoke tests
 ├── docker-compose.yml
