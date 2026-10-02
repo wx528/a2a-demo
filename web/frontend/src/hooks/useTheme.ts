@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+﻿import { useCallback, useEffect, useState } from "react"
 
 type Theme = "light" | "dark" | "system"
 
@@ -13,7 +13,7 @@ function applyTheme(theme: Theme) {
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(
-    () => (localStorage.getItem(STORAGE_KEY) as Theme) || "system",
+    () => (localStorage.getItem(STORAGE_KEY) as Theme) || "dark",
   )
 
   useEffect(() => {
