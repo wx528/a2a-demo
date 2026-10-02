@@ -11,8 +11,9 @@ from datetime import datetime
 from typing import Dict, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -541,12 +542,24 @@ def _ensure_meeting_loaded(meeting_id: str) -> bool:
     return False
 
 
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
+ASSETS_DIR = os.path.join(DIST_DIR, "assets")
+
+
 @app.get("/")
 async def serve_react():
-    static_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "static", "index.html"
-    )
-    return FileResponse(static_file)
+    index_file = os.path.join(DIST_DIR, "index.html")
+    if not os.path.exists(index_file):
+        return HTMLResponse(
+            "<h1>A2A 多人会议室</h1>"
+            "<p>前端尚未构建。请运行：</p>"
+            "<pre>cd web/frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>",
+        )
+    return FileResponse(index_file)
+
+
+if os.path.isdir(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
 @app.get("/api/meetings")
@@ -558,7 +571,7 @@ async def list_meetings_api():
 @app.get("/api/meetings/{meeting_id}")
 async def get_meeting(meeting_id: str):
     if not _ensure_meeting_loaded(meeting_id):
-        return {"error": "Meeting not found"}, 404
+        raise HTTPException(status_code=404, detail="Meeting not found")
     return meetings[meeting_id].model_dump()
 
 
@@ -610,7 +623,7 @@ class SendMessageRequest(BaseModel):
 @app.post("/api/meetings/{meeting_id}/messages")
 async def send_user_message(meeting_id: str, req: SendMessageRequest):
     if not _ensure_meeting_loaded(meeting_id):
-        return {"error": "Meeting not found"}, 404
+        raise HTTPException(status_code=404, detail="Meeting not found")
 
     msg = add_message(meeting_id, "user", req.content)
     return msg.model_dump()
@@ -620,7 +633,7 @@ async def send_user_message(meeting_id: str, req: SendMessageRequest):
 async def peek_next_turn(meeting_id: str):
     """预览下一位发言者（不执行）。"""
     if not _ensure_meeting_loaded(meeting_id):
-        return {"error": "Meeting not found"}, 404
+        raise HTTPException(status_code=404, detail="Meeting not found")
     meeting = meetings[meeting_id]
     spec, _ = turns.next_turn(meeting)
     return {
@@ -635,7 +648,7 @@ async def peek_next_turn(meeting_id: str):
 async def execute_next_turn(meeting_id: str):
     """执行恰好一轮发言（SSE 流式返回，turn_done 收尾）。"""
     if not _ensure_meeting_loaded(meeting_id):
-        return {"error": "Meeting not found"}, 404
+        raise HTTPException(status_code=404, detail="Meeting not found")
     return StreamingResponse(run_turn(meeting_id), media_type="text/event-stream")
 
 
@@ -643,7 +656,7 @@ async def execute_next_turn(meeting_id: str):
 async def meeting_events(meeting_id: str):
     """SSE 实时事件流：初始快照 + 心跳（流程执行走 turns/next）。"""
     if not _ensure_meeting_loaded(meeting_id):
-        return {"error": "Meeting not found"}, 404
+        raise HTTPException(status_code=404, detail="Meeting not found")
 
     async def event_stream():
         meeting = meetings[meeting_id]

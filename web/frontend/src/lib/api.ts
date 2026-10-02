@@ -1,0 +1,51 @@
+import type {
+  ChatMessage,
+  Meeting,
+  MeetingMode,
+  MeetingSummary,
+  Persona,
+  TurnInfo,
+} from "@/types"
+
+async function request<T>(input: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, init)
+  if (!res.ok) throw new Error(`请求失败：${res.status}`)
+  return res.json() as Promise<T>
+}
+
+export interface CreateMeetingBody {
+  topic: string
+  mode: MeetingMode
+  max_rounds: number
+  auto_play: boolean
+  pro_persona: string
+  con_persona: string
+}
+
+export const api = {
+  listMeetings: () => request<MeetingSummary[]>("/api/meetings"),
+
+  getMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}`),
+
+  deleteMeeting: (id: string) =>
+    request<{ deleted: boolean }>(`/api/meetings/${id}`, { method: "DELETE" }),
+
+  createMeeting: (body: CreateMeetingBody) =>
+    request<Meeting>("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  listPersonas: () => request<Persona[]>("/api/personas"),
+
+  sendMessage: (meetingId: string, content: string) =>
+    request<ChatMessage>(`/api/meetings/${meetingId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
+
+  peekNextTurn: (meetingId: string) =>
+    request<TurnInfo>(`/api/meetings/${meetingId}/next-turn`),
+}
