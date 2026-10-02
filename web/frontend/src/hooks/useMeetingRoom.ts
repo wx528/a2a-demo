@@ -15,6 +15,7 @@ export function useMeetingRoom(meetingId: string | null) {
   const runningRef = useRef(false)
   const retryRef = useRef(0)
   const reconnectTimer = useRef<number | null>(null)
+  const autoTimerRef = useRef<number | null>(null)
   const evtSourceRef = useRef<EventSource | null>(null)
   const runNextTurnRef = useRef<() => Promise<void>>(async () => {})
 
@@ -39,7 +40,12 @@ export function useMeetingRoom(meetingId: string | null) {
         setConnected(true)
         setAutoPlay(data.auto_play)
         retryRef.current = 0
-        api.peekNextTurn(meetingId).then(setTurnInfo).catch(() => {})
+        api
+          .peekNextTurn(meetingId)
+          .then((info) => {
+            if (!disposed) setTurnInfo(info)
+          })
+          .catch(() => {})
         if (wasReconnect) toast.success("已恢复实时连接")
       })
       es.onerror = () => {
@@ -58,6 +64,10 @@ export function useMeetingRoom(meetingId: string | null) {
       disposed = true
       evtSourceRef.current?.close()
       if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current)
+      if (autoTimerRef.current) {
+        window.clearTimeout(autoTimerRef.current)
+        autoTimerRef.current = null
+      }
       setConnected(false)
       setMeeting(null)
       setTurnInfo(null)
@@ -117,7 +127,7 @@ export function useMeetingRoom(meetingId: string | null) {
           const payload = JSON.parse(data) as TurnInfo
           setTurnInfo(payload)
           if (!payload.done && autoPlayRef.current) {
-            window.setTimeout(() => void runNextTurnRef.current(), 600)
+            autoTimerRef.current = window.setTimeout(() => void runNextTurnRef.current(), 600)
           }
         } else {
           applyTurnEvent(event, data)
