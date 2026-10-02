@@ -96,7 +96,10 @@ export function CreateMeetingDialog({
               id="topic"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void submit()}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return
+                if (e.key === "Enter") void submit()
+              }}
               placeholder="输入会议主题，例如：A2A protocol"
             />
           </div>
