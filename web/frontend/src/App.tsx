@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react"
 import { ChatInput } from "@/components/ChatInput"
 import { CreateMeetingDialog } from "@/components/CreateMeetingDialog"
-import { HomeEmptyState } from "@/components/HomeEmptyState"
+import { HeroHome } from "@/components/HeroHome"
 import { MessageList } from "@/components/MessageList"
 import { ParticipantBar } from "@/components/ParticipantBar"
 import { RoomHeader } from "@/components/RoomHeader"
@@ -23,7 +23,7 @@ export default function App() {
     new URLSearchParams(window.location.search).get("meeting"),
   )
   const [createOpen, setCreateOpen] = useState(false)
-  const { meetings, refresh, remove } = useMeetings()
+  const { meetings, lastFetchOk, refresh, remove } = useMeetings()
   const room = useMeetingRoom(meetingId)
 
   const openMeeting = useCallback((id: string) => {
@@ -54,17 +54,18 @@ export default function App() {
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="bg-grid flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar
         meetings={meetings}
         activeId={meetingId}
+        online={lastFetchOk}
         onOpen={openMeeting}
         onCreate={() => setCreateOpen(true)}
         onDelete={(id) => void handleDelete(id)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {!meetingId ? (
-          <HomeEmptyState onCreate={() => setCreateOpen(true)} />
+          <HeroHome onCreate={() => setCreateOpen(true)} />
         ) : (
           <>
             <RoomHeader meeting={room.meeting} connected={room.connected} onClose={closeMeeting} />

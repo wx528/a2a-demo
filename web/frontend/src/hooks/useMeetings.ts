@@ -5,11 +5,14 @@ import type { MeetingSummary } from "@/types"
 
 export function useMeetings() {
   const [meetings, setMeetings] = useState<MeetingSummary[]>([])
+  const [lastFetchOk, setLastFetchOk] = useState<boolean | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       setMeetings(await api.listMeetings())
+      setLastFetchOk(true)
     } catch {
+      setLastFetchOk(false)
       toast.error("加载会议列表失败")
     }
   }, [])
@@ -30,5 +33,5 @@ export function useMeetings() {
     }
   }, [])
 
-  return { meetings, refresh, remove }
+  return { meetings, lastFetchOk, refresh, remove }
 }
