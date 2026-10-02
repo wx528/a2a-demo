@@ -292,9 +292,25 @@ Visit: http://localhost:8080
 ### Implementation
 
 - **Backend**: FastAPI + SSE; turn-driven API (`POST /api/meetings/{id}/turns/next` executes exactly one turn and ends with `turn_done`) — step and auto share the same endpoint
-- **Frontend**: React (CDN build) + Tailwind CSS; turn SSE parsed via fetch streaming
+- **Frontend**: Vite + React + Tailwind CSS + shadcn/ui, built to `web/frontend/dist` and served by FastAPI; turn SSE parsed via fetch streaming
 - **A2A calls**: agent turns go through `POST /rpc` `SendMessage`; debate mode talks to `debate-agent` (`DEBATE_AGENT_URL`)
 - **Live status**: agents show "thinking", "speaking", "waiting" states
+
+### Frontend (web/frontend)
+
+The web UI is built with Vite + React + Tailwind + shadcn/ui and served by FastAPI.
+
+```bash
+# Dev mode (start the backend first: uv run python web/main.py)
+cd web/frontend
+npm install
+npm run dev        # http://localhost:5173, /api is proxied to :8080
+
+# Production build
+npm run build      # outputs web/frontend/dist, served automatically by FastAPI
+```
+
+The Docker image builds the frontend automatically — no manual step required.
 
 ---
 

@@ -290,9 +290,25 @@ docker compose up -d
 ### 技术实现
 
 - **后端**：FastAPI + SSE；逐轮驱动 API（`POST /api/meetings/{id}/turns/next` 一次执行一轮并以 `turn_done` 收尾），自动/步进共用同一接口
-- **前端**：React（CDN 版）+ Tailwind CSS；turn SSE 用 fetch 流式解析
+- **前端**：Vite + React + Tailwind CSS + shadcn/ui，构建产物 `web/frontend/dist` 由 FastAPI 托管；turn SSE 用 fetch 流式解析
 - **A2A 调用**：Agent 发言通过 `POST /rpc` 发送 `SendMessage` 给对应 agent；辩论模式接 `debate-agent`（`DEBATE_AGENT_URL`）
 - **实时状态**：Agent 会显示"思考中"、"发言中"、"等待中"等状态
+
+### 前端（web/frontend）
+
+Web UI 使用 Vite + React + Tailwind + shadcn/ui 构建，产物由 FastAPI 托管。
+
+```bash
+# 开发模式（需先启动后端 uv run python web/main.py）
+cd web/frontend
+npm install
+npm run dev        # http://localhost:5173，/api 自动代理到 8080
+
+# 生产构建
+npm run build      # 产物输出 web/frontend/dist，FastAPI 自动托管
+```
+
+Docker 镜像构建时自动完成前端构建，无需手动操作。
 
 ---
 

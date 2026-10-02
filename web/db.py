@@ -217,7 +217,12 @@ def list_meetings() -> List[Dict]:
             "SELECT id, topic, mode, max_rounds, created_at, status, auto_play "
             "FROM meetings ORDER BY created_at DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            row = dict(r)
+            row["auto_play"] = bool(row.get("auto_play"))
+            result.append(row)
+        return result
     finally:
         conn.close()
 
