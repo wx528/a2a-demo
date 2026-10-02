@@ -27,3 +27,4 @@ data/
 
 # Eval reports
 evals/reports/
+.worktrees/
