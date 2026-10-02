@@ -499,7 +499,10 @@ async def run_turn(meeting_id: str):
     meeting = meetings[meeting_id]
     spec, new_state = turns.next_turn(meeting)
     if spec is None:
-        yield sse_event("turn_done", {"meeting_id": meeting_id, "done": True, "next": None})
+        yield sse_event("turn_done", {
+            "meeting_id": meeting_id, "done": True, "next": None,
+            "seq_index": int((meeting.turn_state or {}).get("seq_index", 0)),
+        })
         return
 
     seq = turns.build_sequence(meeting.mode, meeting.max_rounds)
@@ -508,7 +511,10 @@ async def run_turn(meeting_id: str):
         spec, new_state = turns.next_turn_with_index(meeting, spec["index"] + 1)
         steps = 2
         if spec is None:
-            yield sse_event("turn_done", {"meeting_id": meeting_id, "done": True, "next": None})
+            yield sse_event("turn_done", {
+                "meeting_id": meeting_id, "done": True, "next": None,
+                "seq_index": int(new_state.get("seq_index", 0)),
+            })
             return
     meeting.turn_state = new_state
     db_save_state(meeting_id, meeting.turn_state)
@@ -528,7 +534,10 @@ async def run_turn(meeting_id: str):
 
     nxt_spec, _ = turns.next_turn(meeting)
     nxt = _participant_preview(meeting, nxt_spec) if nxt_spec else None
-    yield sse_event("turn_done", {"meeting_id": meeting_id, "done": nxt_spec is None, "next": nxt})
+    yield sse_event("turn_done", {
+        "meeting_id": meeting_id, "done": nxt_spec is None, "next": nxt,
+        "seq_index": int((meeting.turn_state or {}).get("seq_index", 0)),
+    })
 
 
 # ============== API 路由 ==============
@@ -644,6 +653,7 @@ async def peek_next_turn(meeting_id: str):
         "next": _participant_preview(meeting, spec) if spec else None,
         "mode": meeting.mode,
         "auto_play": meeting.auto_play,
+        "seq_index": int((meeting.turn_state or {}).get("seq_index", 0)),
     }
 
 

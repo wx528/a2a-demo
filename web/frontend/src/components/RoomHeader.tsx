@@ -35,11 +35,7 @@ export function RoomHeader({
                 </Badge>
               )}
             </div>
-            {meeting && (
-              <Eyebrow>
-                SESSION {meeting.id.toUpperCase()} · {modeBadgeTextFull(meeting)}
-              </Eyebrow>
-            )}
+            {meeting && <Eyebrow>SESSION {meeting.id.toUpperCase()}</Eyebrow>}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 font-mono text-xs text-muted-foreground">

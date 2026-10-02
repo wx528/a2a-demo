@@ -83,6 +83,7 @@
     --sidebar-border: #e2e6f0;
     --sidebar-ring: #745cff;
     --assist: #0ea5b5;
+    --grid-line: rgba(21, 25, 42, 0.1);
 }
 
 .dark {
@@ -118,6 +119,7 @@
     --sidebar-border: #263049;
     --sidebar-ring: #745cff;
     --assist: #32d6e8;
+    --grid-line: rgba(38, 48, 73, 0.55);
 }
 
 @layer base {
@@ -167,9 +169,8 @@
 /* 指挥舱工具类 */
 .bg-grid {
   background-image:
-    repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 80px),
-    repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px 80px);
+    repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 80px);
 }
-.dark .bg-grid { opacity: 0.18; }
 .shadow-glow { box-shadow: 0 0 18px rgba(116, 92, 255, 0.33); }
 .shadow-soft { box-shadow: 0 10px 30px rgba(17, 22, 42, 0.08); }

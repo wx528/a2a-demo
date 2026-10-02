@@ -1,6 +1,6 @@
 import { Check } from "lucide-react"
 import { Eyebrow } from "@/components/Eyebrow"
-import { buildProgress } from "@/lib/sequence"
+import type { ProgressView } from "@/lib/sequence"
 import { cn } from "@/lib/utils"
 import type { Meeting } from "@/types"
 
@@ -15,12 +15,14 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 export function RightRail({
   meeting,
+  progress,
   sseLatencyMs,
 }: {
   meeting: Meeting
+  progress: ProgressView
   sseLatencyMs: number | null
 }) {
-  const progress = buildProgress(meeting)
+  const progressSlots = progress.slots
 
   const speakCount = new Map<string, number>()
   let chars = 0
@@ -45,7 +47,7 @@ export function RightRail({
           </div>
         )}
         <div className="space-y-2">
-          {progress.slots.map((slot) => {
+          {progressSlots.map((slot) => {
             const name = meeting.participants.find((p) => p.id === slot.participantId)?.name ?? slot.participantId
             const avatar = meeting.participants.find((p) => p.id === slot.participantId)?.avatar ?? "•"
             return (

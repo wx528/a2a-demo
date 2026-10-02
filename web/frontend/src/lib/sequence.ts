@@ -61,9 +61,12 @@ function toParticipantId(meeting: Meeting, key: string): string {
   return key
 }
 
-export function buildProgress(meeting: Meeting): ProgressView {
+export function buildProgress(meeting: Meeting, seqIndexOverride?: number): ProgressView {
   const seq = buildSequence(meeting.mode, meeting.max_rounds)
-  const seqIndex = Number(meeting.turn_state?.seq_index ?? 0)
+  const seqIndex = Math.max(
+    0,
+    Math.round(seqIndexOverride ?? Number(meeting.turn_state?.seq_index ?? 0)),
+  )
 
   const slots: SlotView[] = seq.map((slot) => ({
     ...slot,

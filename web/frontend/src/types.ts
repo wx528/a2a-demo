@@ -57,4 +57,5 @@ export interface TurnInfo {
   next: { participant_id: string; name: string; avatar: string } | null
   mode?: MeetingMode
   auto_play?: boolean
+  seq_index?: number
 }

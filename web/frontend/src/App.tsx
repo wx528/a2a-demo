@@ -82,7 +82,7 @@ export default function App() {
                 turnInfo={room.turnInfo}
                 turnRunning={room.turnRunning}
                 autoPlay={room.autoPlay}
-                progress={buildProgress(room.meeting)}
+                progress={buildProgress(room.meeting, room.turnInfo?.seq_index)}
                 onToggleAutoPlay={room.setAutoPlay}
                 onContinue={() => void room.runNextTurn()}
               />
@@ -100,7 +100,11 @@ export default function App() {
               </div>
               {room.meeting && (
                 <aside className="hidden w-[280px] shrink-0 overflow-y-auto border-l p-4 xl:block">
-                  <RightRail meeting={room.meeting} sseLatencyMs={room.sseLatencyMs} />
+                  <RightRail
+                    meeting={room.meeting}
+                    progress={buildProgress(room.meeting, room.turnInfo?.seq_index)}
+                    sseLatencyMs={room.sseLatencyMs}
+                  />
                 </aside>
               )}
             </div>
