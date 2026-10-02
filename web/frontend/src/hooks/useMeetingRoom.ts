@@ -10,6 +10,7 @@ export function useMeetingRoom(meetingId: string | null) {
   const [turnInfo, setTurnInfo] = useState<TurnInfo | null>(null)
   const [turnRunning, setTurnRunning] = useState(false)
   const [autoPlay, setAutoPlayState] = useState(false)
+  const [sseLatencyMs, setSseLatencyMs] = useState<number | null>(null)
 
   const autoPlayRef = useRef(false)
   const runningRef = useRef(false)
@@ -30,6 +31,7 @@ export function useMeetingRoom(meetingId: string | null) {
     let disposed = false
 
     const connect = () => {
+      const t0 = performance.now()
       const es = new EventSource(`/api/meetings/${meetingId}/events`)
       evtSourceRef.current = es
       es.addEventListener("init", (e) => {
@@ -38,6 +40,7 @@ export function useMeetingRoom(meetingId: string | null) {
         const data = JSON.parse((e as MessageEvent).data) as Meeting
         setMeeting(data)
         setConnected(true)
+        setSseLatencyMs(Math.round(performance.now() - t0))
         setAutoPlay(data.auto_play)
         retryRef.current = 0
         api
@@ -51,6 +54,7 @@ export function useMeetingRoom(meetingId: string | null) {
       es.onerror = () => {
         if (disposed) return
         setConnected(false)
+        setSseLatencyMs(null)
         es.close()
         const delay = Math.min(15000, 1000 * 2 ** retryRef.current)
         retryRef.current += 1
@@ -166,6 +170,7 @@ export function useMeetingRoom(meetingId: string | null) {
   return {
     meeting,
     connected,
+    sseLatencyMs,
     turnInfo,
     turnRunning,
     autoPlay,
