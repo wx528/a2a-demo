@@ -1,9 +1,10 @@
-﻿"""
+"""
 通用 LLM 客户端
 支持 OpenAI 兼容 API（OpenAI、DeepSeek、SiliconFlow、Ollama、vLLM 等）
 """
 
 import os
+import time
 import warnings
 from typing import Iterator, Optional
 
@@ -59,20 +60,23 @@ def call_llm(
     if model.startswith("ollama/"):
         model = model.replace("ollama/", "")
 
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        warnings.warn(f"LLM call failed: {e}")
-        return None
+    for attempt in range(2):  # 偶发网络/限流抖动重试一次
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            warnings.warn(f"LLM call failed (attempt {attempt + 1}): {e}")
+            if attempt == 0:
+                time.sleep(1.0)
+    return None
 
 
 def call_llm_stream(
@@ -95,19 +99,24 @@ def call_llm_stream(
     if model.startswith("ollama/"):
         model = model.replace("ollama/", "")
 
-    try:
-        stream = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-        )
-    except Exception as e:
-        warnings.warn(f"LLM stream call failed: {e}")
+    for attempt in range(2):  # 偶发网络/限流抖动重试一次
+        try:
+            stream = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+            break
+        except Exception as e:
+            warnings.warn(f"LLM stream call failed (attempt {attempt + 1}): {e}")
+            if attempt == 0:
+                time.sleep(1.0)
+    else:
         return None
 
     def _gen():
