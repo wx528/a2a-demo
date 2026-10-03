@@ -38,6 +38,10 @@ export function Sidebar({
   onDelete: (id: string) => void
 }) {
   const [deleteTarget, setDeleteTarget] = useState<MeetingSummary | null>(null)
+  const [query, setQuery] = useState("")
+  const shown = query.trim()
+    ? meetings.filter((m) => m.topic.toLowerCase().includes(query.trim().toLowerCase()))
+    : meetings
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r bg-sidebar">
@@ -64,15 +68,26 @@ export function Sidebar({
       <div className="flex-1 overflow-y-auto px-5 pb-4">
         <div className="flex items-center justify-between py-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-            最近会议 · {meetings.length}
+            最近会议 · {shown.length}
           </span>
-          <Search className="h-3.5 w-3.5 text-muted-foreground" />
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索…"
+              className="h-6 w-28 rounded-full border bg-background pl-6 pr-2 text-xs outline-none focus:border-primary"
+            />
+          </div>
         </div>
         <div className="space-y-2">
           {meetings.length === 0 && (
             <div className="py-8 text-center text-sm text-muted-foreground">暂无历史会议</div>
           )}
-          {meetings.map((m) => (
+          {meetings.length > 0 && shown.length === 0 && (
+            <div className="py-8 text-center text-sm text-muted-foreground">无匹配会议</div>
+          )}
+          {shown.map((m) => (
             <div
               key={m.id}
               onClick={() => onOpen(m.id)}
@@ -97,11 +112,14 @@ export function Sidebar({
                       <MoreHorizontal />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(m)}>
-                      删除会议
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => window.open(`/api/meetings/${m.id}/export`, "_blank")}>
+                    导出记录
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(m)}>
+                    删除会议
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
                 </DropdownMenu>
               </div>
               <div className="mt-1 font-mono text-[10px] text-muted-foreground">

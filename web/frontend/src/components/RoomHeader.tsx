@@ -1,7 +1,8 @@
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Download } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Eyebrow } from "@/components/Eyebrow"
+import { api } from "@/lib/api"
 import { modeBadgeTextFull } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 import type { Meeting } from "@/types"
@@ -38,7 +39,14 @@ export function RoomHeader({
             {meeting && <Eyebrow>SESSION {meeting.id.toUpperCase()}</Eyebrow>}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 font-mono text-xs text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-3 font-mono text-xs text-muted-foreground">
+          {meeting && (
+            <Button variant="ghost" size="icon" asChild title="导出会议记录">
+              <a href={api.exportUrl(meeting.id)} download>
+                <Download />
+              </a>
+            </Button>
+          )}
           <span
             className={cn(
               "h-2 w-2 rounded-full",

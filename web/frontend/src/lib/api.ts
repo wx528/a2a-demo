@@ -50,6 +50,8 @@ export const api = {
   peekNextTurn: (meetingId: string) =>
     request<TurnInfo>(`/api/meetings/${meetingId}/next-turn`),
 
+  exportUrl: (meetingId: string) => `/api/meetings/${meetingId}/export`,
+
   suggestTopics: (count = 3, seed = "") =>
     request<{ topics: string[] }>("/api/topics/suggest", {
       method: "POST",

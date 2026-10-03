@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -723,6 +723,49 @@ async def get_meeting(meeting_id: str):
     if not _ensure_meeting_loaded(meeting_id):
         raise HTTPException(status_code=404, detail="Meeting not found")
     return meetings[meeting_id].model_dump()
+
+
+def _export_markdown(meeting: Meeting) -> str:
+    """把整场会议排版为 Markdown 文档。"""
+    mode_text = {"pipeline": "流水线", "roundtable": "圆桌讨论", "debate": "辩论"}.get(
+        meeting.mode, meeting.mode
+    )
+    lines = [
+        f"# A2A 会议记录：{meeting.topic}",
+        "",
+        f"- 模式：{mode_text}" + (f"（{meeting.max_rounds} 轮）" if meeting.mode != "pipeline" else ""),
+        f"- 创建时间：{meeting.created_at}",
+        f"- 参与者：{'、'.join(p.name for p in meeting.participants)}",
+        "",
+        "---",
+        "",
+    ]
+    for m in meeting.messages:
+        if m.participant_id == "system":
+            lines.append(f"> 📢 {m.content}")
+        else:
+            lines.append(f"**{m.participant_name}**（{m.timestamp}）")
+            lines.append("")
+            lines.append(m.content)
+        lines.append("")
+    return "\n".join(lines)
+
+
+@app.get("/api/meetings/{meeting_id}/export")
+async def export_meeting(meeting_id: str):
+    """导出会议记录为 Markdown 附件下载。"""
+    if not _ensure_meeting_loaded(meeting_id):
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    meeting = meetings[meeting_id]
+    md = _export_markdown(meeting)
+    safe_topic = re.sub(r'[\\/:*?"<>|\s]+', "_", meeting.topic)[:40] or "meeting"
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_topic}.md"',
+        },
+    )
 
 
 @app.delete("/api/meetings/{meeting_id}")
