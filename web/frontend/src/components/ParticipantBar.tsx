@@ -3,11 +3,11 @@ import { Eyebrow } from "@/components/Eyebrow"
 import { cn } from "@/lib/utils"
 import type { Participant } from "@/types"
 
-function StatusText({ status }: { status: Participant["status"] }) {
+function StatusText({ status, phase }: { status: Participant["status"]; phase?: string }) {
   if (status === "thinking") {
     return (
       <span className="flex items-center gap-1 text-primary">
-        思考中
+        {phase ?? "思考中"}
         <span className="thinking-dot inline-block h-1 w-1 rounded-full bg-primary" />
         <span className="thinking-dot inline-block h-1 w-1 rounded-full bg-primary" />
         <span className="thinking-dot inline-block h-1 w-1 rounded-full bg-primary" />
@@ -41,7 +41,7 @@ export function ParticipantBar({ participants }: { participants: Participant[] }
               </Avatar>
               <span className="text-xs font-medium">{p.name}</span>
               <span className="text-[11px] leading-none">
-                <StatusText status={p.status} />
+                <StatusText status={p.status} phase={p.phase} />
               </span>
             </div>
           ))}
