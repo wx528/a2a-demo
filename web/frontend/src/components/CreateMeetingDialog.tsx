@@ -308,7 +308,7 @@ export function CreateMeetingDialog({
                     预览双方开篇立论
                   </Button>
                   {(previewing || preview) && (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                       {(
                         [
                           ["正方", proPersona, preview?.pro, "border-primary/50"],

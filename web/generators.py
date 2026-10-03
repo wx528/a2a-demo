@@ -50,17 +50,16 @@ async def preview_viewpoints(topic: str, pro_id: str, con_id: str) -> Tuple[str,
 
     def _one(pid: str, stance: str) -> str:
         persona = PERSONAS[pid]
-        result = call_llm(
-            (
-                f"你是{stance}辩手。人格设定：{persona['name']}——{persona['style']}。"
-                "直接输出论点正文，不要输出思考过程或任何前后缀。"
-            ),
-            f"辩题：{topic}\n请给出你方开篇立论，120 字以内。",
-            max_tokens=350,
+        system = (
+            f"你是{stance}辩手。人格设定：{persona['name']}——{persona['style']}。"
+            "直接输出论点正文，不要输出思考过程或任何前后缀。"
         )
-        if not result:
-            return "（生成失败，请重试）"
-        return result.split("</think>")[-1].strip()
+        user = f"辩题：{topic}\n请给出你方开篇立论，120 字以内。"
+        for _ in range(2):  # LLM 偶发抖动重试一次
+            result = call_llm(system, user, max_tokens=350)
+            if result:
+                return result.split("</think>")[-1].strip()
+        return "（生成失败，请重试）"
 
     async def _side(pid: str, stance: str) -> str:
         return await asyncio.to_thread(_one, pid, stance)
