@@ -48,16 +48,16 @@ export function MessageBubble({
             <span className="font-mono text-[10px] text-muted-foreground">{msg.timestamp}</span>
           </div>
           {isUser ? (
-            <div className="whitespace-pre-wrap break-words rounded-[14px] rounded-tr-[4px] bg-primary px-4 py-3 text-sm text-primary-foreground">
+            <div className="whitespace-pre-wrap break-words rounded-[16px] rounded-tr-[6px] bg-primary px-5 py-4 text-[15px] leading-relaxed text-primary-foreground">
               {msg.content}
             </div>
           ) : isJudge ? (
-            <div className="rounded-[14px] border border-[#f6b84a]/60 bg-[#f6b84a]/[0.07] p-4 shadow-soft">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#f6b84a]/20 text-[#f6b84a]">
-                  <Scale className="h-3.5 w-3.5" />
+            <div className="rounded-[16px] border border-[#f6b84a]/60 bg-[#f6b84a]/[0.07] p-5 shadow-soft">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#f6b84a]/20 text-[#f6b84a]">
+                  <Scale className="h-4 w-4" />
                 </div>
-                <span className="text-sm font-bold text-[#f6b84a]">
+                <span className="text-base font-bold text-[#f6b84a]">
                   裁判总结{judgeRound !== null ? ` · 第 ${judgeRound} 轮` : ""}
                 </span>
                 <span className="ml-auto rounded-full border border-[#f6b84a]/60 px-2 py-px font-mono text-[9px] tracking-[0.08em] text-[#f6b84a]">
@@ -67,8 +67,11 @@ export function MessageBubble({
               <MarkdownContent content={msg.content} />
             </div>
           ) : (
-            <div className="rounded-[14px] rounded-tl-[4px] border bg-card px-4 py-3">
+            <div className="rounded-[16px] rounded-tl-[6px] border bg-card px-5 py-4">
               <MarkdownContent content={msg.content} />
+              {msg.id.startsWith("streaming-") && (
+                <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-primary align-text-bottom" />
+              )}
             </div>
           )}
         </div>

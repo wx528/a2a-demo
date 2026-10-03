@@ -83,7 +83,54 @@ export function useMeetingRoom(meetingId: string | null) {
     (event: string, data: string) => {
       if (event === "message") {
         const msg = JSON.parse(data) as ChatMessage
-        setMeeting((prev) => (prev ? { ...prev, messages: [...prev.messages, msg] } : prev))
+        setMeeting((prev) =>
+          prev
+            ? {
+                ...prev,
+                // 移除该参与者的流式占位，追加最终消息
+                messages: [
+                  ...prev.messages.filter(
+                    (m) => !(m.id === `streaming-${msg.participant_id}`),
+                  ),
+                  msg,
+                ],
+              }
+            : prev,
+        )
+      } else if (event === "message_delta") {
+        const { participant_id, delta } = JSON.parse(data) as {
+          participant_id: string
+          delta: string
+        }
+        setMeeting((prev) => {
+          if (!prev) return prev
+          const sid = `streaming-${participant_id}`
+          const idx = prev.messages.findIndex((m) => m.id === sid)
+          if (idx === -1) {
+            const p = prev.participants.find((x) => x.id === participant_id)
+            const placeholder: ChatMessage = {
+              id: sid,
+              meeting_id: prev.id,
+              participant_id,
+              participant_name: p?.name ?? participant_id,
+              role: p?.role ?? "agent",
+              content: delta,
+              timestamp: new Date().toLocaleTimeString(),
+              type: "message",
+            }
+            return { ...prev, messages: [...prev.messages, placeholder] }
+          }
+          const messages = [...prev.messages]
+          messages[idx] = { ...messages[idx], content: messages[idx].content + delta }
+          return { ...prev, messages }
+        })
+      } else if (event === "message_abort") {
+        const { participant_id } = JSON.parse(data) as { participant_id: string }
+        setMeeting((prev) =>
+          prev
+            ? { ...prev, messages: prev.messages.filter((m) => m.id !== `streaming-${participant_id}`) }
+            : prev,
+        )
       } else if (event === "system") {
         const { content } = JSON.parse(data) as { content: string }
         const msg: ChatMessage = {

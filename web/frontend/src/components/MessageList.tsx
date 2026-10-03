@@ -14,9 +14,11 @@ export function MessageList({ meeting }: { meeting: Meeting }) {
   const progress = buildProgress(meeting)
   const judgeRound = progress.round ? progress.round.current : null
 
+  const lastLen = meeting.messages[meeting.messages.length - 1]?.content.length ?? 0
+
   useEffect(() => {
     if (atBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [meeting.messages.length, atBottom])
+  }, [meeting.messages.length, lastLen, atBottom])
 
   const handleScroll = () => {
     const el = scrollRef.current
