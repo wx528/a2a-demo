@@ -348,16 +348,19 @@ async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, conte
 
     think = _ThinkFilter()
     parts: List[str] = []
-    streamed = False
+    spoke = False
     try:
         async for delta in call_agent_stream(agent_key, full_input):
             parts.append(delta)
             visible = think.feed(delta)
             if visible:
-                streamed = True
+                if not spoke:
+                    spoke = True
+                    update_participant_status(meeting_id, agent_key, "speaking")
+                    yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "speaking"})
                 yield sse_event("message_delta", {"participant_id": agent_key, "delta": visible})
     except Exception as e:
-        if not streamed:
+        if not spoke:
             result = f"{agent['name']} 调用失败：{e}"
             msg = add_message(meeting_id, agent_key, result)
             yield sse_event("message", msg.model_dump())
@@ -366,7 +369,7 @@ async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, conte
             return
 
     result = ("".join(parts)).split("</think>")[-1].strip()
-    if not streamed and not result:
+    if not result:
         result = f"{agent['name']} 没有返回可用结果。"
 
     update_participant_status(meeting_id, agent_key, "speaking")
@@ -578,11 +581,16 @@ async def _run_debate_step(meeting_id: str, spec: dict):
 
     think = _ThinkFilter()
     parts: List[str] = []
+    spoke = False
     try:
         async for delta in call_debate_agent_stream(msg_text):
             parts.append(delta)
             visible = think.feed(delta)
             if visible:
+                if not spoke:
+                    spoke = True
+                    update_participant_status(meeting_id, pid, "speaking")
+                    yield sse_event("status", {"meeting_id": meeting_id, "participant_id": pid, "status": "speaking"})
                 yield sse_event("message_delta", {"participant_id": pid, "delta": visible})
     except Exception:
         pass  # 已累计文本走正常落库路径
