@@ -6,7 +6,7 @@ Agent 内循环：起草 → 自我审视 → 修订定稿，流式输出。
 任何中间阶段失败自动降级：跳过该阶段，最终阶段仍照常执行。
 """
 
-from typing import Iterator, List, Optional
+from typing import Iterator, List
 
 from shared.llm_client import call_llm, call_llm_stream
 
