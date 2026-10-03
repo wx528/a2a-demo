@@ -59,6 +59,10 @@ class A2AJSONRPCClient:
 
     async def stream_send(self, text: str) -> List[Any]:
         """SendStreamingMessage（SSE），返回按序解析的 data 事件 dict 列表。"""
+        return [ev async for ev in self.stream_events(text)]
+
+    async def stream_events(self, text: str) -> Any:
+        """SendStreamingMessage（SSE），增量产出 data 事件 dict。"""
         payload = JSONRPCRequest(
             id=str(uuid.uuid4()),
             method="SendStreamingMessage",
@@ -70,7 +74,6 @@ class A2AJSONRPCClient:
                 }
             },
         ).model_dump()
-        events: List[Any] = []
         async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
             async with client.stream(
                 "POST",
@@ -81,8 +84,22 @@ class A2AJSONRPCClient:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if line.startswith("data: "):
-                        events.append(json.loads(line[len("data: "):]))
-        return events
+                        yield json.loads(line[len("data: "):])
+
+    async def stream_deltas(self, text: str) -> Any:
+        """增量产出 LLM 文本增量：解析 artifactUpdate 事件中的 parts 文本。
+
+        事件为 camelCase（by_alias 序列化）。遇到 completed/failed 状态结束。"""
+        async for ev in self.stream_events(text):
+            artifact = (ev.get("artifactUpdate") or {}).get("artifact") or {}
+            for part in artifact.get("parts") or []:
+                text_piece = part.get("text")
+                if text_piece:
+                    yield text_piece
+            status = (ev.get("statusUpdate") or {}).get("status") or {}
+            state = str(status.get("state") or "")
+            if state.upper().endswith(("COMPLETED", "FAILED", "CANCELED")):
+                return
 
     async def send_message(self, text: str) -> Dict[str, Any]:
         params = {
