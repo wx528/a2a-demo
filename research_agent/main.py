@@ -19,7 +19,9 @@ from shared.models import (
     Task,
     TaskState,
 )
-from shared.llm_client import call_llm, call_llm_stream
+from shared.llm_client import call_llm
+from shared.search_tool import web_search
+from shared.agent_loop import agentic_stream
 from shared.task_store import SqliteTaskStore
 
 
@@ -45,25 +47,26 @@ def generate_response(user_text: str) -> str:
 
 
 def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
-    """流式版本：增量产出 LLM token；LLM 不可用时整段回退。
-
-    注意：流中途抛出的异常直接上抛，由框架将任务标记为 TASK_STATE_FAILED，
-    不得静默截断（否则任务会带着不完整输出假装完成）。
-    """
+    """流式版本：检索 → 起草 → 自审 → 修订，中间阶段以 <think> 包裹。"""
     user_text = collect_user_text(task)
-    deltas = call_llm_stream(DEFAULT_SYSTEM_PROMPT, user_text)
     fallback = "（当前 LLM 服务不可用，无法生成回答。）"
-    if deltas is None:
-        yield fallback
-        return
 
-    emitted = False
-    for delta in deltas:
-        if delta:
-            emitted = True
-            yield delta
-    if not emitted:
-        yield fallback
+    yield "[PHASE] 检索资料"
+    search_context = ""
+    try:
+        sources = web_search(user_text[:80], max_results=4)
+        if sources:
+            lines = [
+                f"[资料{i}] {s.get('title', '')}\n摘要: {s.get('snippet', '')}"
+                for i, s in enumerate(sources, 1)
+            ]
+            search_context = "检索资料：\n" + "\n\n".join(lines)
+    except Exception:
+        search_context = ""  # 检索失败不阻塞发言
+
+    yield from agentic_stream(
+        DEFAULT_SYSTEM_PROMPT, user_text, search_context=search_context, fallback=fallback
+    )
 
 
 def process_task(task: Task, store: InMemoryTaskStore):

@@ -4,11 +4,12 @@ FastAPI + SSE 实时推送 + React 前端
 """
 
 import os
+import re
 import uuid
 import asyncio
 import json
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -262,6 +263,16 @@ def sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+_PHASE_LINE = re.compile(r"\[PHASE\][^\n]*\n?")
+
+
+def _phase_or_none(delta: str) -> Optional[str]:
+    """[PHASE] 标记行返回文案（供 agent_phase 事件），其余返回 None。"""
+    if delta.startswith("[PHASE]"):
+        return delta[len("[PHASE]"):].strip()
+    return None
+
+
 # ============== Agent 调用 ==============
 
 class _ThinkFilter:
@@ -352,6 +363,10 @@ async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, conte
     try:
         async for delta in call_agent_stream(agent_key, full_input):
             parts.append(delta)
+            phase = _phase_or_none(delta)
+            if phase:
+                yield sse_event("agent_phase", {"participant_id": agent_key, "phase": phase})
+                continue
             visible = think.feed(delta)
             if visible:
                 if not spoke:
@@ -368,7 +383,7 @@ async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, conte
             yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "idle"})
             return
 
-    result = ("".join(parts)).split("</think>")[-1].strip()
+    result = _PHASE_LINE.sub("", "".join(parts)).split("</think>")[-1].strip()
     if not result:
         result = f"{agent['name']} 没有返回可用结果。"
 
@@ -506,13 +521,17 @@ async def _run_classic_step(meeting_id: str, spec: dict, topic: str):
         try:
             async for delta in call_agent_stream(agent_key, agent_prompt):
                 parts.append(delta)
+                phase = _phase_or_none(delta)
+                if phase:
+                    yield sse_event("agent_phase", {"participant_id": agent_key, "phase": phase})
+                    continue
                 visible = think.feed(delta)
                 if visible:
                     yield sse_event("message_delta", {"participant_id": agent_key, "delta": visible})
         except Exception:
             pass  # 已累计的 parts 走正常落库路径；无增量时退化为占位文案
 
-        response = ("".join(parts)).split("</think>")[-1].strip()
+        response = _PHASE_LINE.sub("", "".join(parts)).split("</think>")[-1].strip()
         if not response:
             response = f"{AGENTS[agent_key]['name']} 没有返回可用结果。"
 
@@ -585,6 +604,10 @@ async def _run_debate_step(meeting_id: str, spec: dict):
     try:
         async for delta in call_debate_agent_stream(msg_text):
             parts.append(delta)
+            phase = _phase_or_none(delta)
+            if phase:
+                yield sse_event("agent_phase", {"participant_id": pid, "phase": phase})
+                continue
             visible = think.feed(delta)
             if visible:
                 if not spoke:
@@ -595,7 +618,7 @@ async def _run_debate_step(meeting_id: str, spec: dict):
     except Exception:
         pass  # 已累计文本走正常落库路径
 
-    result = ("".join(parts)).split("</think>")[-1].strip()
+    result = _PHASE_LINE.sub("", "".join(parts)).split("</think>")[-1].strip()
     if not result:
         result = await call_debate_agent(msg_text)
 

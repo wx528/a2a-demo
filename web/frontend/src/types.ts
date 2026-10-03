@@ -6,6 +6,7 @@ export interface Participant {
   role: string
   avatar: string
   status: "idle" | "thinking" | "speaking"
+  phase?: string
 }
 
 export interface ChatMessage {

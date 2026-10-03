@@ -144,6 +144,21 @@ export function useMeetingRoom(meetingId: string | null) {
           type: "system",
         }
         setMeeting((prev) => (prev ? { ...prev, messages: [...prev.messages, msg] } : prev))
+      } else if (event === "agent_phase") {
+        const { participant_id, phase } = JSON.parse(data) as {
+          participant_id: string
+          phase: string
+        }
+        setMeeting((prev) =>
+          prev
+            ? {
+                ...prev,
+                participants: prev.participants.map((p) =>
+                  p.id === participant_id ? { ...p, phase } : p,
+                ),
+              }
+            : prev,
+        )
       } else if (event === "status") {
         const { participant_id, status } = JSON.parse(data) as {
           participant_id: string
@@ -154,7 +169,9 @@ export function useMeetingRoom(meetingId: string | null) {
             ? {
                 ...prev,
                 participants: prev.participants.map((p) =>
-                  p.id === participant_id ? { ...p, status: status as Participant["status"] } : p,
+                  p.id === participant_id
+                    ? { ...p, status: status as Participant["status"], phase: undefined }
+                    : p,
                 ),
               }
             : prev,

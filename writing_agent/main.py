@@ -5,6 +5,7 @@ Writing Agent - A2A 合规示例（JSON-RPC 2.0 绑定）
 
 import os
 import sys
+from typing import Iterator
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.env import load_env
@@ -19,6 +20,7 @@ from shared.models import (
     TaskState,
 )
 from shared.llm_client import call_llm
+from shared.agent_loop import agentic_stream
 from shared.task_store import SqliteTaskStore
 
 
@@ -49,6 +51,14 @@ def process_task(task: Task, store: InMemoryTaskStore):
     response = generate_response(collect_user_text(task))
     store.add_artifact(task, "response", response, "text/markdown")
     store.update_status(task, TaskState.COMPLETED, "写作完成")
+
+
+def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
+    """流式版本：起草 → 自审 → 修订，中间阶段以 <think> 包裹。"""
+    yield from agentic_stream(
+        DEFAULT_SYSTEM_PROMPT, collect_user_text(task),
+        fallback="（当前 LLM 服务不可用，无法生成回答。）",
+    )
 
 
 agent_card = AgentCard(
@@ -91,6 +101,7 @@ _task_store = SqliteTaskStore(TASK_DB) if TASK_DB else None
 server = A2AJSONRPCServer(
     agent_card=agent_card,
     process_task=process_task,
+    process_task_stream=stream_response,
     store=_task_store,
 )
 app = server.build_app(title="Writing Agent (A2A / JSON-RPC)")
