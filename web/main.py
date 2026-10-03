@@ -264,6 +264,38 @@ def sse_event(event: str, data: dict) -> str:
 
 # ============== Agent 调用 ==============
 
+class _ThinkFilter:
+    """累积增量并过滤 <think>…</think> 推理前缀：见到闭合标签后才放行后续内容。"""
+
+    def __init__(self):
+        self.buf = ""
+        self.open_ended = False
+
+    def feed(self, delta: str) -> str:
+        if self.open_ended:
+            return delta
+        self.buf += delta
+        end = self.buf.find("</think>")
+        if end != -1:
+            self.open_ended = True
+            self.buf = ""
+            return delta[end + len("</think>"):]
+        # 保留可能被截断的标签尾巴，避免误发半个 "<thi"
+        keep = 8
+        if len(self.buf) > keep:
+            pending, emit = self.buf[-keep:], self.buf[:-keep]
+            self.buf = pending
+            return emit
+        return ""
+
+    def final_text(self) -> str:
+        if self.open_ended:
+            return ""
+        text = self.buf.split("</think>")[-1]
+        self.buf = ""
+        return text
+
+
 async def call_agent(agent_key: str, input_text: str) -> str:
     """通过 A2A JSON-RPC 端点调用远端 Agent。"""
     agent = AGENTS[agent_key]
@@ -283,8 +315,20 @@ async def call_agent(agent_key: str, input_text: str) -> str:
     return f"{agent['name']} 没有返回可用结果。"
 
 
+async def call_agent_stream(agent_key: str, input_text: str):
+    """流式调用远端 Agent，逐个 yield 文本增量；失败时 yield 单条错误文本。"""
+    agent = AGENTS[agent_key]
+    full_input = f"{agent.get('role_hint', '')}{input_text}"
+    client = A2AJSONRPCClient(agent["url"])
+    try:
+        async for delta in client.stream_deltas(full_input):
+            yield delta
+    except Exception as e:
+        yield f"{agent['name']} 调用失败：{e}"
+
+
 async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, context: str = ""):
-    """运行单个 agent 步骤，带上完整会议上下文"""
+    """运行单个 agent 步骤，带上完整会议上下文；发言流式推送。"""
     agent = AGENTS[agent_key]
 
     update_participant_status(meeting_id, agent_key, "thinking")
@@ -302,7 +346,28 @@ async def run_agent_step(meeting_id: str, agent_key: str, input_text: str, conte
     else:
         full_input = input_text
 
-    result = await call_agent(agent_key, full_input)
+    think = _ThinkFilter()
+    parts: List[str] = []
+    streamed = False
+    try:
+        async for delta in call_agent_stream(agent_key, full_input):
+            parts.append(delta)
+            visible = think.feed(delta)
+            if visible:
+                streamed = True
+                yield sse_event("message_delta", {"participant_id": agent_key, "delta": visible})
+    except Exception as e:
+        if not streamed:
+            result = f"{agent['name']} 调用失败：{e}"
+            msg = add_message(meeting_id, agent_key, result)
+            yield sse_event("message", msg.model_dump())
+            update_participant_status(meeting_id, agent_key, "idle")
+            yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "idle"})
+            return
+
+    result = ("".join(parts)).split("</think>")[-1].strip()
+    if not streamed and not result:
+        result = f"{agent['name']} 没有返回可用结果。"
 
     update_participant_status(meeting_id, agent_key, "speaking")
     yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "speaking"})
@@ -357,6 +422,16 @@ async def call_debate_agent(message_text: str) -> str:
         if part.get("text"):
             return part["text"].split("</think>")[-1].strip()
     return "辩论 Agent 没有返回可用结果。"
+
+
+async def call_debate_agent_stream(message_text: str):
+    """流式调用辩论 Agent；失败时 yield 单条错误文本。"""
+    client = A2AJSONRPCClient(DEBATE_AGENT_URL)
+    try:
+        async for delta in client.stream_deltas(message_text):
+            yield delta
+    except Exception as e:
+        yield f"辩论 Agent 调用失败：{e}"
 
 
 def db_save_state(meeting_id: str, state: Dict):
@@ -418,18 +493,37 @@ async def _run_classic_step(meeting_id: str, spec: dict, topic: str):
                 "如果有，请直接发表观点；如果确实没有新内容，请只回复 PASS。"
                 "不要重复之前已经说过的内容。"
             )
-        response = await call_agent(agent_key, agent_prompt)
+
+        update_participant_status(meeting_id, agent_key, "thinking")
+        yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "thinking"})
+        await asyncio.sleep(0.3)
+
+        think = _ThinkFilter()
+        parts: List[str] = []
+        try:
+            async for delta in call_agent_stream(agent_key, agent_prompt):
+                parts.append(delta)
+                visible = think.feed(delta)
+                if visible:
+                    yield sse_event("message_delta", {"participant_id": agent_key, "delta": visible})
+        except Exception:
+            pass  # 已累计的 parts 走正常落库路径；无增量时退化为占位文案
+
+        response = ("".join(parts)).split("</think>")[-1].strip()
+        if not response:
+            response = f"{AGENTS[agent_key]['name']} 没有返回可用结果。"
+
         if response.strip().upper().startswith("PASS"):
+            yield sse_event("message_abort", {"participant_id": agent_key})
             msg = add_message(
                 meeting_id, "system",
                 f"{AGENTS[agent_key]['name']} 选择本轮 PASS", msg_type="pass",
             )
             yield sse_event("system", {"meeting_id": meeting_id, "content": msg.content})
+            update_participant_status(meeting_id, agent_key, "idle")
+            yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "idle"})
             return
 
-        update_participant_status(meeting_id, agent_key, "thinking")
-        yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "thinking"})
-        await asyncio.sleep(0.3)
         update_participant_status(meeting_id, agent_key, "speaking")
         yield sse_event("status", {"meeting_id": meeting_id, "participant_id": agent_key, "status": "speaking"})
         msg = add_message(meeting_id, agent_key, response)
@@ -482,7 +576,20 @@ async def _run_debate_step(meeting_id: str, spec: dict):
     if inquiry and meeting.inquiry_enabled and spec["kind"] != "judge":
         msg_text += f"\n[观众质询/INQUIRY]\n{inquiry}"
 
-    result = await call_debate_agent(msg_text)
+    think = _ThinkFilter()
+    parts: List[str] = []
+    try:
+        async for delta in call_debate_agent_stream(msg_text):
+            parts.append(delta)
+            visible = think.feed(delta)
+            if visible:
+                yield sse_event("message_delta", {"participant_id": pid, "delta": visible})
+    except Exception:
+        pass  # 已累计文本走正常落库路径
+
+    result = ("".join(parts)).split("</think>")[-1].strip()
+    if not result:
+        result = await call_debate_agent(msg_text)
 
     update_participant_status(meeting_id, pid, "speaking")
     yield sse_event("status", {"meeting_id": meeting_id, "participant_id": pid, "status": "speaking"})
