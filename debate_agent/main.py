@@ -14,7 +14,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.env import load_env
 load_env()
 from shared.a2a_server import A2AJSONRPCServer, InMemoryTaskStore, collect_user_text
-from shared.llm_client import call_llm, call_llm_stream
+from shared.llm_client import call_llm
+from shared.agent_loop import agentic_stream
 from shared.models import (
     AgentCapabilities,
     AgentCard,
@@ -159,19 +160,15 @@ def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
         parsed["motion"], parsed["persona"], parsed["stance"], parsed["opponent"], sources,
         parsed.get("inquiry", ""),
     )
-    deltas = call_llm_stream(build_system_prompt(), user_prompt, max_tokens=1200)
-    emitted = False
     if not sources:
         yield _NO_SOURCES_NOTE + "\n\n"
-    if deltas is None:
-        yield _NO_LLM_FALLBACK
-        return
-    for delta in deltas:
-        if delta:
-            emitted = True
-            yield delta
-    if not emitted:
-        yield _NO_LLM_FALLBACK
+    yield from agentic_stream(
+        build_system_prompt(),
+        user_prompt,
+        search_context=_format_sources(sources) if sources else "",
+        max_tokens=1200,
+        fallback=_NO_LLM_FALLBACK,
+    )
 
 
 agent_card = AgentCard(
