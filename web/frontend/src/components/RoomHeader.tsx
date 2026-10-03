@@ -26,7 +26,7 @@ export function RoomHeader({
           </Button>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="truncate text-lg font-extrabold leading-tight">
+              <h2 className="truncate text-xl font-extrabold leading-tight">
                 {meeting?.topic ?? "加载中…"}
               </h2>
               {meeting && (

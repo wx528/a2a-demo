@@ -31,19 +31,19 @@ export function ChatInput({ onSend }: { onSend: (content: string) => Promise<boo
   return (
     <footer className="border-t bg-card/60 px-6 py-4 backdrop-blur">
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-end gap-3">
+        <div className="relative">
           <Textarea
             ref={ref}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="输入你的观点或质询…"
+            placeholder="输入你的观点或质询..."
             rows={1}
-            className="max-h-40 min-h-12 resize-none rounded-[28px] px-5 py-3"
+            className="max-h-40 min-h-14 resize-none rounded-[24px] pr-16"
           />
           <Button
             size="icon"
-            className="h-12 w-12 shrink-0 rounded-full shadow-glow"
+            className="absolute bottom-2 right-2 h-10 w-10 rounded-full shadow-glow"
             onClick={() => void send()}
             disabled={sending || !value.trim()}
           >

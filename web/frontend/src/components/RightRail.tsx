@@ -6,7 +6,7 @@ import type { Meeting } from "@/types"
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[20px] border bg-card p-[18px]">
+    <div className="relative rounded-[20px] border bg-card p-[18px]">
       <Eyebrow>{title}</Eyebrow>
       <div className="mt-3">{children}</div>
     </div>
@@ -42,14 +42,16 @@ export function RightRail({
     <div className="space-y-4">
       <Card title="ROUND PROGRESS">
         {progress.round && (
-          <div className="mb-3 font-mono text-xs text-assist">
+          <div className="absolute right-[18px] top-[16px] font-mono text-xs text-assist">
             {progress.round.current} / {progress.round.total}
           </div>
         )}
-        <div className="space-y-2">
+        <div className="relative space-y-2">
           {progressSlots.map((slot) => {
             const name = meeting.participants.find((p) => p.id === slot.participantId)?.name ?? slot.participantId
             const avatar = meeting.participants.find((p) => p.id === slot.participantId)?.avatar ?? "•"
+            const stateLabel =
+              slot.state === "done" ? "已完成" : slot.state === "current" ? (slot.kind === "judge" ? "总结中" : "进行中") : "等待"
             return (
               <div
                 key={slot.index}
@@ -66,11 +68,14 @@ export function RightRail({
                 <span className={cn("truncate", slot.state === "pending" && "text-muted-foreground")}>
                   {name}
                 </span>
-                {slot.state === "current" && (
-                  <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.08em] text-primary">
-                    进行中
-                  </span>
-                )}
+                <span
+                  className={cn(
+                    "ml-auto shrink-0 font-mono text-[9px] tracking-[0.04em]",
+                    slot.state === "current" ? "text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {stateLabel}
+                </span>
               </div>
             )
           })}

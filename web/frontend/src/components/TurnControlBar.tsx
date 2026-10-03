@@ -25,16 +25,16 @@ export function TurnControlBar({
   const roundLabel = progress.round ? ` · ROUND ${progress.round.current}/${progress.round.total}` : ""
 
   return (
-    <div className="border-b bg-card/60 px-6 py-2.5 backdrop-blur">
+    <div className="border-y border-dashed border-primary/40 bg-primary/5 px-6 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-glow">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-primary text-primary-foreground shadow-glow">
           <Zap className="h-5 w-5" />
         </div>
         <div className="min-w-0 leading-tight">
           <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-assist">
             NEXT SPEAKER{roundLabel}
           </div>
-          <div className="mt-0.5 truncate text-sm font-bold">
+          <div className="mt-0.5 truncate text-base font-bold">
             下一位发言：{turnInfo.next.avatar} {turnInfo.next.name}
           </div>
         </div>
@@ -52,7 +52,7 @@ export function TurnControlBar({
               }}
             />
           </div>
-          <Button size="sm" className="shadow-glow" onClick={onContinue} disabled={turnRunning}>
+          <Button className="shadow-glow" onClick={onContinue} disabled={turnRunning}>
             {turnRunning ? <Loader2 className="animate-spin" /> : <Play />}
             继续
           </Button>
