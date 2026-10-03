@@ -631,14 +631,15 @@ async def list_personas():
 
 class SuggestTopicsRequest(BaseModel):
     count: int = 3
+    seed: str = ""
 
 
 @app.post("/api/topics/suggest")
 async def suggest_topics_api(req: SuggestTopicsRequest):
-    """LLM 生成候选议题。"""
+    """LLM 生成候选议题（可围绕用户输入的关键词）。"""
     count = max(1, min(5, req.count))
     try:
-        topics = await generators.suggest_topics(count)
+        topics = await generators.suggest_topics(count, seed=req.seed)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI 生成失败，请稍后重试：{e}")
     return {"topics": topics}

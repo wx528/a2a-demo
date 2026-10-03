@@ -92,7 +92,7 @@ export function CreateMeetingDialog({
     if (suggesting) return
     setSuggesting(true)
     try {
-      const { topics } = await api.suggestTopics(3)
+      const { topics } = await api.suggestTopics(3, topic.trim())
       setSuggestions(topics)
     } catch {
       toast.error("AI 生成议题失败，请稍后重试")

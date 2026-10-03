@@ -25,14 +25,23 @@ def _extract_json_array(text: str) -> List[str]:
     return [ln for ln in lines if ln]
 
 
-async def suggest_topics(count: int = 3) -> List[str]:
+async def suggest_topics(count: int = 3, seed: str = "") -> List[str]:
+    if seed.strip():
+        user_prompt = (
+            f"用户输入的关键词/主题是：「{seed.strip()}」。\n"
+            f"请围绕这个关键词生成 {count} 个中文议题，"
+            "每条不超过 20 字，有正反讨论空间或值得多方探讨。"
+        )
+    else:
+        user_prompt = (
+            f"请生成 {count} 个适合 AI Agent 辩论或圆桌讨论的中文议题，"
+            "主题领域多样（科技、社会、商业、伦理等），每条不超过 20 字，有正反讨论空间。"
+        )
+
     def _run() -> List[str]:
         result = call_llm(
             "你是一场 AI Agent 多人会议的主持人，负责出题。只输出 JSON 字符串数组，不要输出任何其它内容。",
-            (
-                f"请生成 {count} 个适合 AI Agent 辩论或圆桌讨论的中文议题，"
-                "主题领域多样（科技、社会、商业、伦理等），每条不超过 20 字，有正反讨论空间。"
-            ),
+            user_prompt,
             max_tokens=500,
         )
         if not result:
