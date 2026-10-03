@@ -22,8 +22,13 @@ def agentic_stream(
     search_context: str = "",
     critique: bool = True,
     max_tokens: int = 2000,
+    fallback: str = "",
 ) -> Iterator[str]:
-    """流式产出：[PHASE] 标记 + <think> 隐藏中间产物 + 最终定稿增量。"""
+    """流式产出：[PHASE] 标记 + <think> 隐藏中间产物 + 最终定稿增量。
+
+    fallback：当全程没有产出任何可见内容时（如 LLM 不可用），额外产出该文本。
+    """
+    visible_chars = 0
     draft_ctx = f"{search_context}\n\n{user}" if search_context else user
 
     yield "[PHASE] 整理思路并起草"
@@ -68,4 +73,8 @@ def agentic_stream(
     yield "[PHASE] 输出最终发言"
     for delta in call_llm_stream(system, revision_user, max_tokens=max_tokens) or []:
         if delta:
+            visible_chars += len(delta)
             yield delta
+
+    if visible_chars == 0 and fallback:
+        yield fallback
