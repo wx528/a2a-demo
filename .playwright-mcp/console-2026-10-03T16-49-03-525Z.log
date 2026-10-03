@@ -48,3 +48,5 @@
 [  673620ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:18080/api/events:0
 [  689784ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:18080/api/events:0
 [  704794ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:18080/api/events:0
+[  719805ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:18080/api/events:0
+[  734816ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:18080/api/events:0
