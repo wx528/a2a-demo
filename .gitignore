@@ -28,3 +28,5 @@ data/
 # Eval reports
 evals/reports/
 .worktrees/
+.playwright-mcp/
+shots/

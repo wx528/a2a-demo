@@ -1,4 +1,0 @@
-[   82993ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8090/api/events:0
-[   84003ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8090/api/events:0
-[   86008ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8090/api/events:0
-[   90021ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8090/api/events:0
