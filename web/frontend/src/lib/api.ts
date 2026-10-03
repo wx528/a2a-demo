@@ -49,4 +49,18 @@ export const api = {
 
   peekNextTurn: (meetingId: string) =>
     request<TurnInfo>(`/api/meetings/${meetingId}/next-turn`),
+
+  suggestTopics: (count = 3) =>
+    request<{ topics: string[] }>("/api/topics/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ count }),
+    }),
+
+  previewViewpoints: (body: { topic: string; pro_persona: string; con_persona: string }) =>
+    request<{ pro: string; con: string }>("/api/viewpoints/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 }

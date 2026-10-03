@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { GitBranch, Loader2, MessagesSquare, Swords } from "lucide-react"
+import { GitBranch, Loader2, MessagesSquare, Sparkles, Swords } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -73,6 +73,10 @@ export function CreateMeetingDialog({
   const [conPersona, setConPersona] = useState("hume")
   const [personas, setPersonas] = useState<Persona[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [previewing, setPreviewing] = useState(false)
+  const [preview, setPreview] = useState<{ pro: string; con: string } | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -83,6 +87,32 @@ export function CreateMeetingDialog({
   }, [open])
 
   const roundsCap = mode === "debate" ? 3 : 10
+
+  const suggest = async () => {
+    if (suggesting) return
+    setSuggesting(true)
+    try {
+      const { topics } = await api.suggestTopics(3)
+      setSuggestions(topics)
+    } catch {
+      toast.error("AI 生成议题失败，请稍后重试")
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  const loadPreview = async () => {
+    if (!topic.trim() || previewing) return
+    setPreviewing(true)
+    setPreview(null)
+    try {
+      setPreview(await api.previewViewpoints({ topic: topic.trim(), pro_persona: proPersona, con_persona: conPersona }))
+    } catch {
+      toast.error("观点预览失败，请稍后重试")
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   const submit = async () => {
     if (!topic.trim() || submitting) return
@@ -127,12 +157,40 @@ export function CreateMeetingDialog({
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="topic">会议主题</Label>
-              <Input
-                id="topic"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="输入会议主题，例如：A2A protocol"
-              />
+              <div className="relative">
+                <Input
+                  id="topic"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="输入会议主题，或让 AI 生成"
+                  className="pr-24"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="absolute right-1.5 top-1/2 h-7 -translate-y-1/2 gap-1.5 px-2 text-xs"
+                  onClick={() => void suggest()}
+                  disabled={suggesting}
+                  title="AI 生成候选议题"
+                >
+                  {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-primary" />}
+                  AI 生成
+                </Button>
+              </div>
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {suggestions.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTopic(t)}
+                      className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label>选择会议模式</Label>
@@ -230,15 +288,62 @@ export function CreateMeetingDialog({
                   </div>
                   <Switch id="inquiry" checked={inquiry} onCheckedChange={setInquiry} />
                 </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="autoplay">自动连播</Label>
+                    <div className="text-xs text-muted-foreground">每轮 Agent 发言后自动继续</div>
+                  </div>
+                  <Switch id="autoplay" checked={autoPlay} onCheckedChange={setAutoPlay} />
+                </div>
+                <div className="space-y-2 border-t pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-1.5"
+                    onClick={() => void loadPreview()}
+                    disabled={!topic.trim() || previewing}
+                    title={!topic.trim() ? "先填写会议主题" : "生成双方开篇立论"}
+                  >
+                    {previewing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-primary" />}
+                    预览双方开篇立论
+                  </Button>
+                  {(previewing || preview) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          ["正方", proPersona, preview?.pro, "border-primary/50"],
+                          ["反方", conPersona, preview?.con, "border-assist/60"],
+                        ] as const
+                      ).map(([stance, pid, text, border]) => (
+                        <div key={stance} className={cn("rounded-[10px] border p-2.5", border)}>
+                          <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
+                            {stance} · {personas.find((p) => p.id === pid)?.name ?? pid}
+                          </div>
+                          {previewing || text === undefined ? (
+                            <div className="space-y-1.5">
+                              <div className="h-2.5 w-full animate-pulse rounded bg-muted" />
+                              <div className="h-2.5 w-4/5 animate-pulse rounded bg-muted" />
+                              <div className="h-2.5 w-3/5 animate-pulse rounded bg-muted" />
+                            </div>
+                          ) : (
+                            <div className="whitespace-pre-wrap text-xs leading-relaxed">{text}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             )}
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="autoplay">自动连播</Label>
-                <div className="text-xs text-muted-foreground">每轮 Agent 发言后自动继续</div>
+            {mode === "roundtable" && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="autoplay-rt">自动连播</Label>
+                  <div className="text-xs text-muted-foreground">每轮 Agent 发言后自动继续</div>
+                </div>
+                <Switch id="autoplay-rt" checked={autoPlay} onCheckedChange={setAutoPlay} />
               </div>
-              <Switch id="autoplay" checked={autoPlay} onCheckedChange={setAutoPlay} />
-            </div>
+            )}
             {mode === "pipeline" && (
               <div className="text-xs text-muted-foreground">
                 流水线模式按固定顺序依次执行一轮，用户插话可重新触发。
