@@ -26,6 +26,7 @@ from debate.personas import PERSONAS
 from debate.run_debate import build_turn_message
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
+import generators
 import turns
 
 
@@ -626,6 +627,40 @@ async def list_personas():
          "avatar": PERSONA_AVATARS.get(p["id"], "🗣️")}
         for p in PERSONAS.values() if p["id"] != "judge"
     ]
+
+
+class SuggestTopicsRequest(BaseModel):
+    count: int = 3
+
+
+@app.post("/api/topics/suggest")
+async def suggest_topics_api(req: SuggestTopicsRequest):
+    """LLM 生成候选议题。"""
+    count = max(1, min(5, req.count))
+    try:
+        topics = await generators.suggest_topics(count)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI 生成失败，请稍后重试：{e}")
+    return {"topics": topics}
+
+
+class PreviewViewpointsRequest(BaseModel):
+    topic: str
+    pro_persona: str
+    con_persona: str
+
+
+@app.post("/api/viewpoints/preview")
+async def preview_viewpoints_api(req: PreviewViewpointsRequest):
+    """LLM 并行生成正反双方开篇立论预览。"""
+    if not req.topic.strip():
+        raise HTTPException(status_code=422, detail="辩题不能为空")
+    if req.pro_persona not in PERSONAS or req.con_persona not in PERSONAS:
+        raise HTTPException(status_code=422, detail="人格不存在")
+    pro, con = await generators.preview_viewpoints(
+        req.topic.strip(), req.pro_persona, req.con_persona
+    )
+    return {"pro": pro, "con": con}
 
 
 class SendMessageRequest(BaseModel):
