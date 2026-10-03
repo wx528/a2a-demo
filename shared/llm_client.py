@@ -1,4 +1,4 @@
-"""
+﻿"""
 通用 LLM 客户端
 支持 OpenAI 兼容 API（OpenAI、DeepSeek、SiliconFlow、Ollama、vLLM 等）
 """
@@ -43,7 +43,7 @@ def call_llm(
     user_prompt: str,
     model: Optional[str] = None,
     temperature: float = 0.7,
-    max_tokens: int = 2000,
+    max_tokens: int = 8000,
 ) -> Optional[str]:
     """
     调用 LLM 生成文本。
@@ -80,7 +80,7 @@ def call_llm_stream(
     user_prompt: str,
     model: Optional[str] = None,
     temperature: float = 0.7,
-    max_tokens: int = 2000,
+    max_tokens: int = 8000,
 ) -> Optional[Iterator[str]]:
     """
     流式调用 LLM，返回增量文本生成器。
