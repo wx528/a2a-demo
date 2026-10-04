@@ -454,7 +454,7 @@ def test_research_streaming_failure_marks_failed(monkeypatch):
 
         return gen()
 
-    monkeypatch.setattr(research_module, "call_llm_stream", bad_stream)
+    monkeypatch.setattr("shared.agent_loop.call_llm_stream", bad_stream)
     client = TestClient(research_app)
     resp = client.post(
         "/rpc/stream",
