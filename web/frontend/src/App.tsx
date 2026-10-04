@@ -1,121 +1,34 @@
-import { useCallback, useState } from "react"
-import { ChatInput } from "@/components/ChatInput"
-import { CreateMeetingDialog } from "@/components/CreateMeetingDialog"
-import { HeroHome } from "@/components/HeroHome"
-import { MessageList } from "@/components/MessageList"
-import { ParticipantBar } from "@/components/ParticipantBar"
-import { RightRail } from "@/components/RightRail"
-import { RoomHeader } from "@/components/RoomHeader"
-import { Sidebar } from "@/components/Sidebar"
-import { TurnControlBar } from "@/components/TurnControlBar"
-import { useMeetings } from "@/hooks/useMeetings"
-import { useMeetingRoom } from "@/hooks/useMeetingRoom"
-import { buildProgress } from "@/lib/sequence"
-import type { Meeting } from "@/types"
-
-function updateUrl(meetingId: string | null) {
-  const url = new URL(window.location.href)
-  if (meetingId) url.searchParams.set("meeting", meetingId)
-  else url.searchParams.delete("meeting")
-  window.history.replaceState({}, "", url)
-}
+import { Toaster } from "sonner"
+import { useV2Theme } from "@/hooks/useV2Theme"
+import { useHashRoute } from "@/lib/router"
+import { HomePage } from "@/pages/HomePage"
+import { OutcomePage } from "@/pages/OutcomePage"
+import { PlanPage } from "@/pages/PlanPage"
+import { WorkspacePage } from "@/pages/WorkspacePage"
 
 export default function App() {
-  const [meetingId, setMeetingId] = useState<string | null>(() =>
-    new URLSearchParams(window.location.search).get("meeting"),
-  )
-  const [createOpen, setCreateOpen] = useState(false)
-  const { meetings, lastFetchOk, refresh, remove } = useMeetings()
-  const room = useMeetingRoom(meetingId)
+  useV2Theme()
+  const { route } = useHashRoute()
 
-  const openMeeting = useCallback((id: string) => {
-    setMeetingId(id)
-    updateUrl(id)
-  }, [])
-
-  const closeMeeting = useCallback(() => {
-    setMeetingId(null)
-    updateUrl(null)
-  }, [])
-
-  const handleCreated = useCallback(
-    (meeting: Meeting) => {
-      setCreateOpen(false)
-      void refresh()
-      openMeeting(meeting.id)
-    },
-    [refresh, openMeeting],
-  )
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      const ok = await remove(id)
-      if (ok && id === meetingId) closeMeeting()
-    },
-    [remove, meetingId, closeMeeting],
-  )
+  let page
+  switch (route.name) {
+    case "plan":
+      page = <PlanPage />
+      break
+    case "task":
+      page = <WorkspacePage id={route.id} />
+      break
+    case "outcome":
+      page = <OutcomePage id={route.id} />
+      break
+    default:
+      page = <HomePage />
+  }
 
   return (
-    <div className="bg-grid flex h-screen overflow-hidden bg-background text-foreground">
-      <Sidebar
-        meetings={meetings}
-        activeId={meetingId}
-        online={lastFetchOk}
-        onOpen={openMeeting}
-        onCreate={() => setCreateOpen(true)}
-        onDelete={(id) => void handleDelete(id)}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        {!meetingId ? (
-          <HeroHome onCreate={() => setCreateOpen(true)} />
-        ) : (
-          <>
-            <RoomHeader
-              meeting={room.meeting}
-              connected={room.connected}
-              sseLatencyMs={room.sseLatencyMs}
-              onClose={closeMeeting}
-            />
-            {room.meeting && <ParticipantBar participants={room.meeting.participants} />}
-            {room.meeting && (
-              <TurnControlBar
-                turnInfo={room.turnInfo}
-                turnRunning={room.turnRunning}
-                autoPlay={room.autoPlay}
-                progress={buildProgress(room.meeting, room.turnInfo?.seq_index)}
-                onToggleAutoPlay={room.setAutoPlay}
-                onContinue={() => void room.runNextTurn()}
-              />
-            )}
-            <div className="flex min-h-0 flex-1">
-              <div className="flex min-w-0 flex-1 flex-col">
-                {room.meeting ? (
-                  <MessageList meeting={room.meeting} />
-                ) : (
-                  <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                    正在加载会议室…
-                  </div>
-                )}
-                <ChatInput onSend={room.sendMessage} />
-              </div>
-              {room.meeting && (
-                <aside className="hidden w-[280px] shrink-0 overflow-y-auto border-l p-4 xl:block">
-                  <RightRail
-                    meeting={room.meeting}
-                    progress={buildProgress(room.meeting, room.turnInfo?.seq_index)}
-                    sseLatencyMs={room.sseLatencyMs}
-                  />
-                </aside>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-      <CreateMeetingDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={handleCreated}
-      />
+    <div className="min-h-screen bg-background text-foreground">
+      {page}
+      <Toaster position="top-center" richColors />
     </div>
   )
 }
