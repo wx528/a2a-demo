@@ -75,10 +75,29 @@ def test_sse_stream_emits_init_and_events(client):
 def test_history_and_isolation(client):
     a = _create(client, goal_text="任务A").json()["id"]
     b = _create(client, goal_text="任务B").json()["id"]
+    assert a != b
     lst = client.get("/api/v2/tasks").json()
     assert len(lst) == 2
+    assert {x["id"] for x in lst} == {a, b}
+    # GET 按任务 id 取数：各自载荷的 id/goal_text 与请求的 id 严格对应，不串任务
     ta = client.get(f"/api/v2/tasks/{a}").json()
-    assert all(x["id"] != b for x in []) or ta["goal_text"] == "任务A"
+    tb = client.get(f"/api/v2/tasks/{b}").json()
+    assert ta["id"] == a and ta["goal_text"] == "任务A"
+    assert tb["id"] == b and tb["goal_text"] == "任务B"
+    assert ta["turns"] == [] and tb["turns"] == []
+
+
+def test_start_publishes_status_change(client, monkeypatch):
+    import web.v2.routes as v2_routes
+
+    calls = []
+    monkeypatch.setattr(
+        v2_routes.broadcaster, "publish", lambda tid, event, data: calls.append((tid, event, data))
+    )
+    tid = _create(client).json()["id"]
+    r = client.post(f"/api/v2/tasks/{tid}/start")
+    assert r.status_code == 200
+    assert (tid, "status_change", {"status": "running"}) in calls
 
 
 def test_patch_outcome_ignores_label(client):

@@ -214,6 +214,7 @@ async def start_task(task_id: str, req: StartRequest | None = None):
     store.save_task(task)
     task.status = "running"
     store.save_task(task)
+    broadcaster.publish(task_id, "status_change", {"status": "running"})
     _spawn(orchestrator.run_task(task_id))
     return task.public_dict()
 
@@ -430,7 +431,7 @@ async def export_task(task_id: str):
     md = _export_markdown(task)
     # HTTP 头只允许 latin-1：ASCII 兜底名 + RFC 5987 filename* 保留原始中文名
     safe_goal = re.sub(r"[^\w\-.]+", "_", task.goal_text, flags=re.ASCII)[:40] or "task"
-    utf8_goal = quote(f"{task.goal_text}.md")
+    utf8_goal = quote(f"{task.goal_text}.md", safe="")
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
