@@ -18,6 +18,14 @@ All agents expose the A2A protocol over **JSON-RPC 2.0** (aligned with the [A2A 
 - `POST /rpc`: JSON-RPC entry point — `SendMessage`, `GetTask`, `CancelTask`, `ListTasks` (legacy names like `tasks/send` kept as aliases)
 - `POST /rpc/stream`: SSE streaming entry point — `SendStreamingMessage`, `SubscribeToTask`
 
+## Meeting Room Preview
+
+| Debate room (dark) | Home (dark) |
+|---|---|
+| ![Debate room](docs/images/room-dark.png) | ![Home](docs/images/home-dark.png) |
+
+Agents stream token-by-token with visible work phases (search → draft → critique → final), the right rail shows real round progress and session telemetry, and every meeting can be exported as Markdown.
+
 > Updated 2026-09: data model, method names, enums, error format and timestamp precision are aligned with the current v1.0.0 spec (PascalCase methods, `TASK_STATE_*` / `ROLE_*` enums, `google.rpc.ErrorInfo` errors, millisecond timestamps). Task failures fall through to `TASK_STATE_FAILED`; multi-turn conversations are supported: messages with `taskId` continue an existing task, messages with `contextId` create a new task seeded with the context history. Real token-level streaming and SQLite task persistence are built in.
 
 ---

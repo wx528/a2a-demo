@@ -17,6 +17,14 @@
 - `POST /rpc`：JSON-RPC 入口，支持 `SendMessage`、`GetTask`、`CancelTask`、`ListTasks`（旧名 `tasks/send` 等保留为兼容别名）
 - `POST /rpc/stream`：SSE 流式入口，支持 `SendStreamingMessage`、`SubscribeToTask`
 
+## 会议室预览
+
+| 辩论会议室（暗色） | 首页（暗色） |
+|---|---|
+| ![辩论会议室](docs/images/room-dark.png) | ![首页](docs/images/home-dark.png) |
+
+Agent 发言逐 token 流式输出，工作阶段（检索 → 起草 → 自审 → 定稿）实时可见；右栏展示真实轮次进度与会话遥测；每场会议可一键导出 Markdown。
+
 > 2026-09 更新：数据模型、方法名、枚举值、错误格式与时间戳精度已对齐现行 v1.0.0 规范（PascalCase 方法名、`TASK_STATE_*` / `ROLE_*` 枚举、`google.rpc.ErrorInfo` 错误、毫秒时间戳）。任务失败自动落 `TASK_STATE_FAILED`；支持多轮会话：消息带 `taskId` 续聊既有任务，带 `contextId` 新建任务并继承上下文历史。内置真流式输出与 SQLite 任务持久化。
 
 ---
