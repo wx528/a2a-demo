@@ -85,6 +85,7 @@
     --sidebar-accent-foreground: #7054d8;
     --sidebar-border: #dfe2e5;
     --sidebar-ring: #7054d8;
+    --shadow-page: 0 8px 28px rgba(37, 42, 64, 0.06);
 }
 
 .dark {
@@ -121,6 +122,7 @@
     --sidebar-accent-foreground: #aa91ff;
     --sidebar-border: #333a4b;
     --sidebar-ring: #8060d9;
+    --shadow-page: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 @layer base {
@@ -131,6 +133,8 @@
     @apply bg-background text-foreground;
     }
 }
+
+.shadow-page { box-shadow: var(--shadow-page); }
 
 .markdown-body { line-height: 1.7; font-size: 0.875rem; }
 .markdown-body h1 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
