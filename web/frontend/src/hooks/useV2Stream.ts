@@ -82,7 +82,11 @@ export function useV2Stream(taskId: string | null) {
 
     getTask(taskId)
       .then((data) => {
-        if (!cancelled) update(data)
+        if (cancelled) return
+        // 竞态保护：HTTP 快照可能晚于一条更及时的 SSE init，旧快照直接丢弃
+        const prev = taskRef.current
+        if (prev && prev.id === data.id && prev.updated_at >= data.updated_at) return
+        update(data)
       })
       .catch((err: unknown) => {
         if (cancelled) return
