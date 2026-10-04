@@ -7,7 +7,6 @@ import os
 import re
 import uuid
 import asyncio
-import json
 from datetime import datetime
 from typing import Dict, List
 from contextlib import asynccontextmanager
@@ -29,7 +28,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
 import generators
 import turns
-from web.v2.util import ThinkFilter as _ThinkFilter, _PHASE_LINE, _phase_or_none
+from web.v2.routes import router as v2_router, store as v2_store
+from web.v2.util import ThinkFilter as _ThinkFilter, _PHASE_LINE, _phase_or_none, sse_event
 
 
 WEB_PORT = int(os.getenv("PORT", 8080))
@@ -51,6 +51,7 @@ async def lifespan(app: FastAPI):
         meeting = db.get_meeting(meeting_row["id"])
         if meeting:
             meetings[meeting["id"]] = Meeting(**meeting)
+    v2_store.init()
     yield
 
 
@@ -61,6 +62,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(v2_router)
 
 
 # ============== 数据模型 ==============
@@ -258,10 +260,6 @@ def update_participant_status(meeting_id: str, participant_id: str, status: str)
         if p.id == participant_id:
             p.status = status
     db.update_participant_status(meeting_id, participant_id, status)
-
-
-def sse_event(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 # ============== Agent 调用 ==============

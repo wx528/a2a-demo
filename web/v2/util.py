@@ -1,9 +1,15 @@
-"""V1/V2 共用的流式文本工具：think 推理前缀过滤与 [PHASE] 标记解析。"""
+"""V1/V2 共用的流式文本工具：think 推理前缀过滤、[PHASE] 标记解析与 SSE 事件格式化。"""
 
+import json
 import re
 from typing import Optional
 
 _PHASE_LINE = re.compile(r"\[PHASE\][^\n]*\n?")
+
+
+def sse_event(event: str, data: dict) -> str:
+    """格式化一条 SSE 事件（V1 会议流与 V2 任务流共用）。"""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 def _phase_or_none(delta: str) -> Optional[str]:
