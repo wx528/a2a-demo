@@ -445,8 +445,6 @@ def test_streaming_generator_failure_marks_failed():
 def test_research_streaming_failure_marks_failed(monkeypatch):
     """research agent 流式中途失败必须落 TASK_STATE_FAILED，不得静默截断。"""
     import json as _json
-    import research_agent.main as research_module
-
     def bad_stream(system, user, **kw):
         def gen():
             yield "partial..."
