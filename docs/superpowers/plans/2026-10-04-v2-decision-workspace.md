@@ -632,7 +632,7 @@ def test_history_and_isolation(client):
 ### Task 9: compose 服务与环境
 
 **Files:**
-- Modify: `docker-compose.yml`（追加 role-ada/role-turing/role-linus/role-sage 四服务，ports 8011-8014，env `ROLE`、LLM 三件套、`<<: *default-dns`；web 服务 env 追加 `ROLE_AGENT_URLS=http://role-ada:8011,http://role-turing:8012,http://role-linus:8013,http://role-sage:8014`）
+- Modify: `docker-compose.yml`（追加 role-ada/role-turing/role-linus/role-sage 四服务，ports 8011-8014，env `ROLE`、LLM 三件套、`<<: *default-dns`；web 服务 env 追加 `ROLE_AGENT_URLS=ada=http://role-ada:8011,turing=http://role-turing:8012,linus=http://role-linus:8013,sage=http://role-sage:8014`）
 - Test: 无单测；`docker compose config -q` 语法校验 + 本地起栈冒烟。
 
 - [ ] **Step 1:** 编辑 compose（照 research-agent 服务块复制修改）

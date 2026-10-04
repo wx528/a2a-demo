@@ -95,7 +95,7 @@ services:
       - RESEARCH_AGENT_URL=http://research-agent:8001
       - WRITING_AGENT_URL=http://writing-agent:8002
       - DEBATE_AGENT_URL=http://debate-agent:8003
-      - ROLE_AGENT_URLS=http://role-ada:8011,http://role-turing:8012,http://role-linus:8013,http://role-sage:8014
+      - ROLE_AGENT_URLS=ada=http://role-ada:8011,turing=http://role-turing:8012,linus=http://role-linus:8013,sage=http://role-sage:8014
       - V2_DB=data/v2_tasks.db
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
