@@ -36,6 +36,10 @@ class NullBroadcaster:
         pass
 
 
+class AgentCallError(Exception):
+    """后端调用失败（backend 内部重试一次仍失败时抛出，Task 6 接入）。"""
+
+
 STAGE_PLAN: list[tuple[Stage, list[str], str]] = [
     ("clarify", ["ada"], "澄清需求"),
     ("compare", ["turing"], "比较方案"),
@@ -69,10 +73,20 @@ class Orchestrator:
         self.backend = backend
         self.broadcaster = broadcaster
         self._running: dict[str, asyncio.Task] = {}
+        self._pending_interventions: dict[str, list[dict]] = {}
 
     def _save(self, task: V2Task) -> None:
         task.updated_at = time.time()
         self.store.save_task(task)
+
+    def _adopt_persisted(self, task: V2Task) -> None:
+        """await 窗口内外部可能已改库（pause/resume/end_now/retry）；发言落盘前同步这些字段，
+        避免用旧对象整行覆盖掉外部变更（status/outcome 等）。"""
+        fresh = self.store.get_task(task.id)
+        if fresh is None:
+            return
+        for field in ("status", "current_stage", "stage_index", "error", "outcome"):
+            setattr(task, field, getattr(fresh, field))
 
     def _publish(self, task_id: str, event: str, data: dict) -> None:
         self.broadcaster.publish(task_id, event, data)
@@ -86,6 +100,7 @@ class Orchestrator:
         title: str = "",
         body: str = "",
         verified: bool = False,
+        intent: str | None = None,
     ) -> Turn:
         seq = task.next_seq()
         turn = Turn(
@@ -97,6 +112,7 @@ class Orchestrator:
             title=title,
             body=body,
             verified=verified,
+            intent=intent,
         )
         task.turns.append(turn)
         return turn
@@ -104,6 +120,7 @@ class Orchestrator:
     async def _speak(self, task: V2Task, key: str) -> Turn:
         author = _AUTHOR_BY_KEY[key]
         title, body, verified = await self.backend.speak(task, author, key)
+        self._adopt_persisted(task)
         turn = self._make_turn(
             task, _STAGE_BY_KEY[key], author, "statement",
             title=title, body=body, verified=verified,
@@ -141,6 +158,24 @@ class Orchestrator:
         self._save(task)
         self._publish(task.id, "stage_change", {"stage": task.current_stage})
 
+    def _drain_interventions(self, task: V2Task) -> None:
+        """把待处理的用户补充落成 user_note turn（推进循环每条发言后 / 决策记录后调用）。"""
+        queue = self._pending_interventions.get(task.id)
+        if not queue:
+            return
+        for item in queue:
+            turn = self._make_turn(
+                task, task.current_stage, "user", "user_note",
+                title=f"你 · {item['intent']}", body=item["text"], intent=item["intent"],
+            )
+            self._save(task)
+            self._publish(
+                task.id,
+                "intervention_ack",
+                {"turn_id": turn.id, "seq": turn.seq, "intent": item["intent"], "text": item["text"]},
+            )
+        self._pending_interventions[task.id] = []
+
     async def _step(self, task: V2Task) -> bool:
         """执行一个推进单元；返回 False 表示循环应退出（到达决策门或无可做之事）。"""
         if task.stage_index >= len(STAGE_PLAN):
@@ -149,6 +184,7 @@ class Orchestrator:
         spoken = sum(1 for t in task.turns if t.stage == stage and t.kind == "statement")
         if spoken < len(speakers):
             await self._speak(task, f"{stage}_{speakers[spoken]}")
+            self._drain_interventions(task)
             return True
         if stage == "review":
             self._open_gate(task)
@@ -182,14 +218,17 @@ class Orchestrator:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    task.error = f"发言生成失败：{exc}"
-                    task.status = "failed"
-                    self._save(task)
-                    self._publish(task_id, "status_change", {"status": "failed"})
+                    self._mark_failed(task, exc)
                     return
         finally:
             if current is not None and self._running.get(task_id) is current:
                 self._running.pop(task_id, None)
+
+    def _mark_failed(self, task: V2Task, exc: Exception) -> None:
+        task.error = f"发言生成失败：{exc}"
+        task.status = "failed"
+        self._save(task)
+        self._publish(task.id, "status_change", {"status": "failed"})
 
     def pause(self, task_id: str) -> None:
         task = self.store.get_task(task_id)
@@ -227,33 +266,89 @@ class Orchestrator:
         task.constraints.append(Constraint(text=option.label, confirmed=not option.uncertain))
         self._save(task)
         self._publish(task_id, "turn_done", {"turn_id": turn.id, "seq": turn.seq})
+        self._drain_interventions(task)
+        try:
+            await self._continue_after_decision(task)
+        except Exception as exc:
+            self._mark_failed(task, exc)
+        return task
+
+    async def _continue_after_decision(self, task: V2Task) -> None:
+        """门决策后的续推；按本决策记录之后的已完成发言数续传（供 submit_decision / retry 复用）。"""
+        self._drain_interventions(task)
+        decision = task.decisions[-1]
+        option = next(o for o in decision.options if o.id == decision.chosen_id)
+        record = next(t for t in reversed(task.turns) if t.kind == "decision_record")
+        post = [t for t in task.turns if t.seq > record.seq and t.kind == "statement"]
         if option.uncertain:
-            await self._speak(task, "uncertain_turing")
-            await self._speak(task, "uncertain_linus")
+            if len(post) < 1:
+                await self._speak(task, "uncertain_turing")
+            if len(post) < 2:
+                await self._speak(task, "uncertain_linus")
             self._open_gate(task)
         else:
-            await self._speak(task, "revise_turing")
-            task.stage_index = STAGES.index("recommend")
-            task.current_stage = "recommend"
-            self._save(task)
-            self._publish(task_id, "stage_change", {"stage": "recommend"})
-            await self._speak(task, "recommend_sage")
+            if len(post) < 1:
+                await self._speak(task, "revise_turing")
+            if task.stage_index != STAGES.index("recommend"):
+                task.stage_index = STAGES.index("recommend")
+                task.current_stage = "recommend"
+                self._save(task)
+                self._publish(task.id, "stage_change", {"stage": "recommend"})
+            if len(post) < 2:
+                await self._speak(task, "recommend_sage")
             task.outcome = demo.build_outcome(task)
             task.status = "completed"
             self._save(task)
-            self._publish(task_id, "outcome_update", {"status": "completed"})
-            self._publish(task_id, "status_change", {"status": "completed"})
-        return task
+            self._publish(task.id, "outcome_update", {"status": "completed"})
+            self._publish(task.id, "status_change", {"status": "completed"})
+
+    async def submit_intervention(self, task_id: str, intent: str, text: str) -> dict:
+        task = self.store.get_task(task_id)
+        if task is None:
+            raise ValueError(f"task not found: {task_id}")
+        if task.status not in ("preparing", "running", "waiting_confirmation", "paused"):
+            raise ValueError("任务当前无法接收补充内容")
+        queue = self._pending_interventions.setdefault(task_id, [])
+        queue.append({"intent": intent, "text": text})
+        return {"received": True, "position": len(queue), "ack": demo.ACK_RECEIVED}
+
+    async def retry(self, task_id: str) -> V2Task:
+        task = self.store.get_task(task_id)
+        if task is None:
+            raise ValueError(f"task not found: {task_id}")
+        if task.status != "failed":
+            raise ValueError("仅失败任务可重试")
+        task.error = None
+        task.status = "running"
+        self._save(task)
+        self._publish(task_id, "status_change", {"status": "running"})
+        last = task.decisions[-1] if task.decisions else None
+        if last is not None and last.status == "open":
+            task.status = "waiting_confirmation"
+            self._save(task)
+            self._publish(task_id, "status_change", {"status": "waiting_confirmation"})
+        elif last is not None:
+            try:
+                await self._continue_after_decision(task)
+            except Exception as exc:
+                self._mark_failed(task, exc)
+        else:
+            await self.run_task(task_id)
+        return self.store.get_task(task_id)
 
     async def end_now(self, task_id: str) -> V2Task:
         task = self.store.get_task(task_id)
         if task is None:
             raise ValueError(f"task not found: {task_id}")
-        if task.outcome is None:
-            task.outcome = demo.build_outcome(task)
-        if task.status not in ("completed", "failed"):
-            task.status = "completed"
+        if task.status == "completed":
+            return task
+        if task.status not in ("running", "waiting_confirmation", "paused"):
+            raise ValueError("任务当前状态无法提前结束")
+        # 先置 completed：推进循环下一次状态检查观察到后自行退出。
+        task.outcome = demo.build_outcome(task)
+        task.status = "completed"
+        task.current_stage = "recommend"
         self._save(task)
+        self._publish(task_id, "status_change", {"status": "completed"})
         self._publish(task_id, "outcome_update", {"status": "completed"})
-        self._publish(task_id, "status_change", {"status": task.status})
         return task
