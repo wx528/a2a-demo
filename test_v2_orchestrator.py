@@ -7,6 +7,7 @@ from web.v2.orchestrator import Orchestrator, SpeakerBackend, NullBroadcaster
 
 class EchoBackend(SpeakerBackend):
     async def speak(self, task, author, key):
+        await asyncio.sleep(0)
         return (key, f"body:{key}:{task.goal_text}", False)
 
 
@@ -84,3 +85,4 @@ async def test_single_coroutine_guard(tmp_path):
     await asyncio.create_task(orch.run_task("t1"))  # 第二次应立即返回
     await _drain(task1)
     assert store.get_task("t1").status == "waiting_confirmation"
+    assert len(store.get_task("t1").turns) == 3

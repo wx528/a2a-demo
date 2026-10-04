@@ -87,9 +87,10 @@ class Orchestrator:
         body: str = "",
         verified: bool = False,
     ) -> Turn:
+        seq = task.next_seq()
         turn = Turn(
-            id=f"turn-{task.next_seq()}",
-            seq=task.next_seq(),
+            id=f"turn-{seq}",
+            seq=seq,
             stage=stage,
             author=author,
             kind=kind,
@@ -175,8 +176,17 @@ class Orchestrator:
                 task = self.store.get_task(task_id)
                 if task is None or task.status != "running":
                     break
-                if not await self._step(task):
-                    break
+                try:
+                    if not await self._step(task):
+                        break
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    task.error = f"发言生成失败：{exc}"
+                    task.status = "failed"
+                    self._save(task)
+                    self._publish(task_id, "status_change", {"status": "failed"})
+                    return
         finally:
             if current is not None and self._running.get(task_id) is current:
                 self._running.pop(task_id, None)
@@ -213,7 +223,8 @@ class Orchestrator:
             task, task.current_stage, "user", "decision_record",
             title=f"你已确认：{option.label}", body=option.impact,
         )
-        task.constraints.append(Constraint(text=option.label, confirmed=True))
+        # 「暂不确定」也记录约束但不确认，避免出现在下游已确认列表中。
+        task.constraints.append(Constraint(text=option.label, confirmed=not option.uncertain))
         self._save(task)
         self._publish(task_id, "turn_done", {"turn_id": turn.id, "seq": turn.seq})
         if option.uncertain:
