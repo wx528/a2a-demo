@@ -95,6 +95,8 @@ services:
       - RESEARCH_AGENT_URL=http://research-agent:8001
       - WRITING_AGENT_URL=http://writing-agent:8002
       - DEBATE_AGENT_URL=http://debate-agent:8003
+      - ROLE_AGENT_URLS=http://role-ada:8011,http://role-turing:8012,http://role-linus:8013,http://role-sage:8014
+      - V2_DB=data/v2_tasks.db
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
@@ -102,6 +104,78 @@ services:
       - research-agent
       - writing-agent
       - debate-agent
+      - role-ada
+      - role-turing
+      - role-linus
+      - role-sage
+    networks:
+      - a2a-network
+
+  role-ada:
+    <<: *default-dns
+    build:
+      context: .
+      dockerfile: role_agent/Dockerfile
+    ports:
+      - "8011:8011"
+    environment:
+      - ROLE=ada
+      - PORT=8011
+      - AGENT_URL=http://role-ada:8011
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+    networks:
+      - a2a-network
+
+  role-turing:
+    <<: *default-dns
+    build:
+      context: .
+      dockerfile: role_agent/Dockerfile
+    ports:
+      - "8012:8012"
+    environment:
+      - ROLE=turing
+      - PORT=8012
+      - AGENT_URL=http://role-turing:8012
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+    networks:
+      - a2a-network
+
+  role-linus:
+    <<: *default-dns
+    build:
+      context: .
+      dockerfile: role_agent/Dockerfile
+    ports:
+      - "8013:8013"
+    environment:
+      - ROLE=linus
+      - PORT=8013
+      - AGENT_URL=http://role-linus:8013
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+    networks:
+      - a2a-network
+
+  role-sage:
+    <<: *default-dns
+    build:
+      context: .
+      dockerfile: role_agent/Dockerfile
+    ports:
+      - "8014:8014"
+    environment:
+      - ROLE=sage
+      - PORT=8014
+      - AGENT_URL=http://role-sage:8014
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
     networks:
       - a2a-network
 
