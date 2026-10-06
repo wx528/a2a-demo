@@ -53,16 +53,26 @@ function podSummary(task: V2StreamTaskT): string {
   return "讨论进行中"
 }
 
+function podHeader(task: V2StreamTaskT): string {
+  const base = "会议舱 · 4 个专业视角"
+  if (task.demo) return `${base} · 演示 · 非实时`
+  const states = POD_ROLES.map((role) => task.connections?.[role])
+  if (states.some((state) => typeof state === "string" && state !== "demo")) {
+    const up = states.filter((state) => state === "up").length
+    return `${base} · ${podSummary(task)} · Agent 在线 ${up}/4`
+  }
+  return `${base} · ${podSummary(task)}`
+}
+
 export function MeetingPod({ task }: { task: V2StreamTaskT }) {
   const [open, setOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 1280,
   )
-  const summary = podSummary(task)
   return (
     <section className="rounded-[14px] border border-border bg-card">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <h2 className="truncate text-[13px] font-bold text-secondary-foreground">
-          会议舱 · 4 个专业视角 · {summary}
+          {podHeader(task)}
         </h2>
         <button
           type="button"
@@ -83,6 +93,7 @@ export function MeetingPod({ task }: { task: V2StreamTaskT }) {
           {POD_ROLES.map((role) => {
             const meta = roleMeta(role)
             const stateMeta = ROLE_STATE_META[roleState(task, role)]
+            const connectionDown = task.connections?.[role] === "down"
             return (
               <div
                 key={role}
@@ -95,9 +106,17 @@ export function MeetingPod({ task }: { task: V2StreamTaskT }) {
                   <span className="truncate text-[13px] font-medium text-foreground">
                     {meta.zh} · {meta.en}
                   </span>
-                  <span className="text-xs text-muted-foreground">{stateMeta.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {connectionDown ? "连接中断" : stateMeta.label}
+                  </span>
                 </span>
-                <span className={cn("size-1.5 shrink-0 rounded-full", stateMeta.dot)} aria-hidden />
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    connectionDown ? "bg-destructive" : stateMeta.dot,
+                  )}
+                  aria-hidden
+                />
               </div>
             )
           })}

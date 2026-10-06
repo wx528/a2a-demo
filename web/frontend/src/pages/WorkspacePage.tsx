@@ -3,6 +3,7 @@ import type { ReactNode, UIEvent } from "react"
 import { AlertTriangle, ArrowLeft, Loader2, Pause } from "lucide-react"
 import { toast } from "sonner"
 import { DecisionGate } from "@/components/v2/DecisionGate"
+import { DemoBadge } from "@/components/v2/StatusBadge"
 import { InterventionBar } from "@/components/v2/InterventionBar"
 import { MeetingPod } from "@/components/v2/MeetingPod"
 import { OutcomeRail } from "@/components/v2/OutcomeRail"
@@ -276,6 +277,7 @@ export function WorkspacePage({ id }: { id: string }) {
       subtitle={`${stageLabel(task.current_stage)} · 第 ${stageIndex + 1} / 4 阶段`}
       topRight={
         <div className="flex items-center gap-3">
+          {task.demo ? <DemoBadge /> : null}
           <StatusBadge status={task.status} />
           <button
             type="button"

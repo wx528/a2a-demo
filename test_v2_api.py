@@ -52,13 +52,27 @@ def test_full_demo_loop(client):
     assert t["connections"] == {k: "demo" for k in ["ada", "turing", "linus", "sage"]}
     did = t["decisions"][0]["id"]
     r2 = client.post(f"/api/v2/tasks/{tid}/decisions/{did}", json={"option_id": "o1"})
-    assert r2.json()["status"] == "completed"
+    # 确认立即生效（running），发言与成果组装在后台续推
+    assert r2.json()["status"] == "running"
+    t = None
+    for _ in range(100):
+        t = client.get(f"/api/v2/tasks/{tid}").json()
+        if t["status"] == "completed":
+            break
+        time.sleep(0.05)
+    assert t["status"] == "completed"
     out = client.get(f"/api/v2/tasks/{tid}/outcome").json()
     assert out["label"] == "ai_suggestion"
     ex = client.get(f"/api/v2/tasks/{tid}/export")
     assert ex.status_code == 200 and "演示" in ex.text
     # confirm 接口
     assert client.post(f"/api/v2/tasks/{tid}/outcome/confirm").json()["label"] == "team_confirmed"
+
+
+def test_create_rejects_overlong_inputs(client):
+    assert _create(client, goal_text="x" * 301).status_code == 422
+    assert _create(client, constraints=["x" * 201]).status_code == 422
+    assert _create(client, expected_outcome="x" * 201).status_code == 422
 
 
 def test_sse_stream_emits_init_and_events(client):

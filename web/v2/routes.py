@@ -16,7 +16,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from web.v2 import demo
 from web.v2.agents_client import ROLE_AGENTS, AgentSpeakerBackend, reload_urls
@@ -90,12 +90,20 @@ def _spawn(coro) -> asyncio.Task:
 
 class CreateV2TaskRequest(BaseModel):
     goal_type: Literal["decision", "research", "compare", "review"] = "decision"
-    goal_text: str = Field(min_length=1)
-    expected_outcome: str = ""
+    goal_text: str = Field(min_length=1, max_length=300)
+    expected_outcome: str = Field(default="", max_length=200)
     constraints: list[str] = Field(default_factory=list)
     materials: list[Material] = Field(default_factory=list)
     advanced_mode: Literal["pipeline", "roundtable", "debate"] = "pipeline"
-    advanced_rounds: int = Field(default=1, ge=1, le=3)
+    advanced_rounds: int = Field(default=2, ge=1, le=3)
+
+    @field_validator("constraints")
+    @classmethod
+    def _constraints_length_limit(cls, value: list[str]) -> list[str]:
+        for item in value:
+            if len(item) > 200:
+                raise ValueError("单条约束不超过 200 字")
+        return value
 
 
 class StartRequest(BaseModel):
@@ -110,7 +118,7 @@ class DecisionRequest(BaseModel):
 
 class InterventionRequest(BaseModel):
     intent: Literal["追问", "补充条件", "调整方向"]
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=2000)
 
 
 class OutcomePatchRequest(BaseModel):
@@ -228,9 +236,11 @@ async def start_task(task_id: str, req: StartRequest | None = None):
 async def submit_decision(task_id: str, decision_id: str, req: DecisionRequest):
     _require_task(task_id)
     try:
-        task = await orchestrator.submit_decision(task_id, decision_id, req.option_id)
+        # 只同步落盘决策并立即返回；发言与成果组装放后台，避免 HTTP 被阻塞数分钟
+        task = orchestrator.resolve_decision(task_id, decision_id, req.option_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _spawn(orchestrator.continue_after_decision(task_id))
     return task.public_dict()
 
 
@@ -267,9 +277,11 @@ async def resume_task(task_id: str):
 async def retry_task(task_id: str):
     _require_task(task_id)
     try:
-        task = await orchestrator.retry(task_id)
+        # 同步重置状态并立即返回；续跑放后台
+        task = orchestrator.retry_prepare(task_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _spawn(orchestrator.resume_driver(task_id))
     return task.public_dict()
 
 

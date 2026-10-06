@@ -79,6 +79,31 @@ async def test_submit_idempotent(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_resolve_decision_sync_then_continue(tmp_path):
+    store, orch, t = _mk(tmp_path)
+    await _drain(orch.run_task("t1"))
+    d = store.get_task("t1").decisions[0]
+    resolved = orch.resolve_decision("t1", d.id, "o1")
+    assert resolved.status == "running"  # 同步落盘即可返回，不等发言
+    mid = store.get_task("t1")
+    assert mid.decisions[0].status == "resolved" and mid.outcome is None
+    await _drain(orch.continue_after_decision("t1"))
+    done = store.get_task("t1")
+    assert done.status == "completed" and done.outcome is not None
+
+
+@pytest.mark.asyncio
+async def test_continue_after_decision_noop_when_complete(tmp_path):
+    store, orch, t = _mk(tmp_path)
+    await _drain(orch.run_task("t1"))
+    d = store.get_task("t1").decisions[0]
+    await _drain(orch.submit_decision("t1", d.id, "o1"))
+    before = len(store.get_task("t1").turns)
+    await _drain(orch.continue_after_decision("t1"))  # 已走完，不重复发言
+    assert len(store.get_task("t1").turns) == before
+
+
+@pytest.mark.asyncio
 async def test_single_coroutine_guard(tmp_path):
     store, orch, t = _mk(tmp_path)
     task1 = asyncio.create_task(orch.run_task("t1"))

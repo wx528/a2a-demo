@@ -5,11 +5,13 @@ import { cn } from "@/lib/utils"
 
 const FOCUS_RING = "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 
-const MODES: { value: AdvancedModeT; label: string }[] = [
-  { value: "pipeline", label: "流水线" },
-  { value: "roundtable", label: "圆桌" },
-  { value: "debate", label: "辩论" },
+const MODES: { value: AdvancedModeT; label: string; enabled: boolean }[] = [
+  { value: "pipeline", label: "流水线", enabled: true },
+  { value: "roundtable", label: "圆桌", enabled: false },
+  { value: "debate", label: "辩论", enabled: false },
 ]
+
+const MODE_DISABLED_NOTE = "本轮按统一节奏推进，模式选择暂不生效"
 
 export function AdvancedSettings({
   mode,
@@ -57,12 +59,20 @@ export function AdvancedSettings({
             <span className="text-sm text-muted-foreground">讨论模式</span>
             <div role="radiogroup" aria-label="讨论模式" className="flex flex-wrap items-center gap-4">
               {MODES.map((option) => (
-                <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                <label
+                  key={option.value}
+                  title={option.enabled ? undefined : MODE_DISABLED_NOTE}
+                  className={cn(
+                    "flex items-center gap-2 text-sm text-foreground",
+                    option.enabled ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+                  )}
+                >
                   <input
                     type="radio"
                     name="v2-advanced-mode"
                     value={option.value}
                     checked={mode === option.value}
+                    disabled={!option.enabled}
                     onChange={() => onMode(option.value)}
                     className={cn("size-4 rounded-full accent-primary", FOCUS_RING)}
                   />
@@ -93,6 +103,9 @@ export function AdvancedSettings({
               辩论模式本轮仅支持 1 轮
             </p>
           ) : null}
+          <p className="w-full text-xs text-muted-foreground" role="note">
+            {MODE_DISABLED_NOTE}
+          </p>
         </div>
       ) : null}
     </section>

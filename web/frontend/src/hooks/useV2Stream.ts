@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 import {
   getTask,
   streamUrl,
@@ -16,7 +15,6 @@ export type V2StreamTaskT = Omit<V2TaskT, "turns"> & { turns: V2TurnT[] }
 type DeltaPayloadT = { author?: unknown; delta?: unknown }
 type StatusPayloadT = { status?: TaskStatusT }
 type StagePayloadT = { stage?: StageT }
-type AckPayloadT = { intent?: string }
 
 function parsePayload<T>(event: MessageEvent): T | null {
   try {
@@ -105,7 +103,15 @@ export function useV2Stream(taskId: string | null) {
     source.addEventListener("init", (event) => {
       if (cancelled) return
       const data = parsePayload<V2TaskT>(event)
-      if (data) update(data)
+      if (!data) return
+      // SSE init 快照不带探活结果；已有连接状态时保留，避免会议舱误报 0/4 在线
+      const prev = taskRef.current
+      const hasConnections = Object.keys(data.connections ?? {}).length > 0
+      if (prev && prev.id === data.id && !hasConnections) {
+        update({ ...data, connections: prev.connections })
+        return
+      }
+      update(data)
     })
 
     source.addEventListener("status_change", (event) => {
@@ -113,7 +119,16 @@ export function useV2Stream(taskId: string | null) {
       const data = parsePayload<StatusPayloadT>(event)
       if (!data?.status) return
       const prev = taskRef.current
-      if (prev) update({ ...prev, status: data.status })
+      if (!prev) return
+      if (data.status === "failed") {
+        // 中止的流式发言不落库：关闭 live turn 并移除残文，让重试从干净状态开始
+        for (const turn of prev.turns) {
+          if (turn.live) closedRef.current.add(turn.id)
+        }
+        update({ ...prev, status: data.status, turns: prev.turns.filter((turn) => !turn.live) })
+        return
+      }
+      update({ ...prev, status: data.status })
     })
 
     source.addEventListener("stage_change", (event) => {
@@ -183,10 +198,9 @@ export function useV2Stream(taskId: string | null) {
       void applyRefresh(taskId)
     })
 
-    source.addEventListener("intervention_ack", (event) => {
+    source.addEventListener("intervention_ack", () => {
       if (cancelled) return
-      const data = parsePayload<AckPayloadT>(event)
-      toast.success(`已接收 · ${data?.intent ?? "补充内容"}将在当前发言结束后处理`)
+      // 行内 ack 已即时反馈，这里只刷新落库结果，不再重复 toast
       void applyRefresh(taskId)
     })
 

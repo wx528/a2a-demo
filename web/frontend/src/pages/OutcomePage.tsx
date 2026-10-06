@@ -12,6 +12,7 @@ import {
   Save,
 } from "lucide-react"
 import { toast } from "sonner"
+import { DemoBadge } from "@/components/v2/StatusBadge"
 import { OutcomeOverview, pad } from "@/components/v2/OutcomeOverview"
 import { Shell } from "@/components/v2/Shell"
 import { ThemeToggle } from "@/components/v2/ThemeToggle"
@@ -389,6 +390,7 @@ export function OutcomePage({ id }: { id: string }) {
       subtitle={`${task.goal_text} · 已完成协作 · 第 4 / 4 阶段`}
       topRight={
         <div className="flex items-center gap-2">
+          {task.demo ? <DemoBadge /> : null}
           {editing ? (
             <>
               <button
@@ -469,7 +471,7 @@ export function OutcomePage({ id }: { id: string }) {
             <div className="flex flex-col gap-5">
               <SectionHeader index="01" title="为什么是内部试点" />
               {reasons.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无建议理由</p>
+                <p className="text-sm text-muted-foreground">讨论内容不足，未生成理由摘要</p>
               ) : (
                 <div className="flex flex-col gap-5">
                   {reasons.map((reason, index) => (
@@ -527,7 +529,7 @@ export function OutcomePage({ id }: { id: string }) {
             <div className="flex flex-col gap-5">
               <SectionHeader index="02" title="两条可行路径，分别承担什么" />
               {paths.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无路径对比</p>
+                <p className="text-sm text-muted-foreground">本次协作未生成结构化方案对比</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {paths.map((path, index) => (
@@ -649,7 +651,12 @@ export function OutcomePage({ id }: { id: string }) {
                         <span className="flex-1 text-sm text-secondary-foreground">
                           {item.quote}
                         </span>
-                        <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                        {jumpable ? (
+                          <ArrowUpRight
+                            className="size-4 shrink-0 text-muted-foreground"
+                            aria-hidden
+                          />
+                        ) : null}
                       </>
                     )
                     return jumpable ? (
@@ -682,7 +689,7 @@ export function OutcomePage({ id }: { id: string }) {
             <div className="flex flex-col gap-5">
               <SectionHeader index="04" title="把建议变成下一步" />
               {actions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无行动项</p>
+                <p className="text-sm text-muted-foreground">试点计划确认后补充行动项</p>
               ) : (
                 <div className="flex flex-col gap-4">
                   {actions.map((action, index) => (
@@ -779,7 +786,7 @@ export function OutcomePage({ id }: { id: string }) {
                 已确认边界
               </span>
               {acceptance.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无验收条件</p>
+                <p className="text-sm text-muted-foreground">验收条件将在试点计划中明确</p>
               ) : (
                 <div className="flex flex-col gap-3">
                   {acceptance.map((item, index) => (

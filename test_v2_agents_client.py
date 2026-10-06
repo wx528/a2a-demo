@@ -44,3 +44,33 @@ async def test_backend_retries_then_raises(monkeypatch):
     with pytest.raises(AgentCallError):
         await be.speak(_task(), "ada", "clarify_ada")
     assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_empty_response_raises(monkeypatch):
+    class Empty:
+        def __init__(self, url):
+            pass
+
+        async def stream_deltas(self, text):
+            yield ""
+
+    monkeypatch.setattr("web.v2.agents_client.A2AJSONRPCClient", Empty)
+    be = AgentSpeakerBackend(NullBroadcasterStub())
+    with pytest.raises(AgentCallError):
+        await be.speak(_task(), "ada", "clarify_ada")
+
+
+@pytest.mark.asyncio
+async def test_fallback_placeholder_raises(monkeypatch):
+    class Fallback:
+        def __init__(self, url):
+            pass
+
+        async def stream_deltas(self, text):
+            yield "[研究员 Ada暂未能生成发言，请稍后重试]"
+
+    monkeypatch.setattr("web.v2.agents_client.A2AJSONRPCClient", Fallback)
+    be = AgentSpeakerBackend(NullBroadcasterStub())
+    with pytest.raises(AgentCallError):
+        await be.speak(_task(), "ada", "clarify_ada")

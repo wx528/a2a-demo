@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { useV2Tasks } from "@/hooks/useV2Tasks"
 import { useHashRoute } from "@/lib/router"
 import { cn } from "@/lib/utils"
-import { StatusBadge } from "@/components/v2/StatusBadge"
+import { DemoChip, StatusBadge } from "@/components/v2/StatusBadge"
 import { ThemeToggle } from "@/components/v2/ThemeToggle"
 
 const STATUS_LABELS: Record<string, string> = {
@@ -106,8 +106,11 @@ function SidebarContent({
                     : "hover:bg-panel",
                 )}
               >
-                <span className="truncate text-sm font-medium text-foreground">
-                  {task.goal_text}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {task.goal_text}
+                  </span>
+                  {task.demo ? <DemoChip /> : null}
                 </span>
                 <StatusBadge status={task.status} />
                 <span className="truncate text-xs text-muted-foreground">

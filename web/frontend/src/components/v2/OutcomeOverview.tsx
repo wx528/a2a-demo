@@ -58,7 +58,7 @@ export function OutcomeOverview({
         </div>
         <span className="text-[13px] text-muted-foreground">采用建议与试点计划</span>
       </div>
-      <h1 className="text-[26px] font-bold leading-[1.4] text-foreground xl:text-[32px]">
+      <h1 className="text-[26px] font-bold leading-[1.4] whitespace-pre-line text-foreground xl:text-[32px]">
         {outcome.conclusion || "暂无主结论"}
       </h1>
       {summary ? <p className="text-base text-secondary-foreground">{summary}</p> : null}

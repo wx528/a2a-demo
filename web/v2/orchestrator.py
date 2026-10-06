@@ -73,6 +73,7 @@ class Orchestrator:
         self.backend = backend
         self.broadcaster = broadcaster
         self._running: dict[str, asyncio.Task] = {}
+        self._continuing: dict[str, asyncio.Task] = {}
         self._pending_interventions: dict[str, list[dict]] = {}
 
     def _save(self, task: V2Task) -> None:
@@ -246,13 +247,17 @@ class Orchestrator:
         self._save(task)
         self._publish(task_id, "status_change", {"status": "running"})
 
-    async def submit_decision(self, task_id: str, decision_id: str, option_id: str) -> V2Task:
+    def resolve_decision(self, task_id: str, decision_id: str, option_id: str) -> V2Task:
+        """同步落盘决策：写 chosen、追加约束、记录 decision_record、转 running。
+
+        只做校验与落盘，不做后续发言——HTTP 侧可立即返回，续推交给 continue_after_decision。
+        """
         task = self.store.get_task(task_id)
         if task is None:
             raise ValueError(f"task not found: {task_id}")
         decision = next((d for d in task.decisions if d.id == decision_id), None)
         if decision is None or decision.status == "resolved":
-            return task
+            return task  # 幂等：未知或已确认的决策不再重复处理
         option = next((o for o in decision.options if o.id == option_id), None)
         if option is None:
             return task
@@ -264,14 +269,44 @@ class Orchestrator:
         )
         # 「暂不确定」也记录约束但不确认，避免出现在下游已确认列表中。
         task.constraints.append(Constraint(text=option.label, confirmed=not option.uncertain))
+        task.status = "running"
         self._save(task)
+        self._publish(task_id, "status_change", {"status": "running"})
         self._publish(task_id, "turn_done", {"turn_id": turn.id, "seq": turn.seq})
-        self._drain_interventions(task)
-        try:
-            await self._continue_after_decision(task)
-        except Exception as exc:
-            self._mark_failed(task, exc)
         return task
+
+    async def continue_after_decision(self, task_id: str) -> None:
+        """决策落盘后的续推；有已确认但未走完的决策时执行（供 submit_decision / retry 复用）。"""
+        current = asyncio.current_task()
+        existing = self._continuing.get(task_id)
+        if existing is not None and not existing.done():
+            return
+        if current is not None:
+            self._continuing[task_id] = current
+        try:
+            task = self.store.get_task(task_id)
+            if task is None:
+                return
+            resolved = [d for d in task.decisions if d.status == "resolved"]
+            if not resolved or resolved[-1] is not task.decisions[-1]:
+                return  # 无待续推的决策；或其后已开出新门（等待用户确认）
+            option = next(
+                (o for o in resolved[-1].options if o.id == resolved[-1].chosen_id), None
+            )
+            if option is None or (not option.uncertain and task.status == "completed"):
+                return  # 确认路径已走完
+            try:
+                await self._continue_after_decision(task)
+            except Exception as exc:
+                self._mark_failed(task, exc)
+        finally:
+            if current is not None and self._continuing.get(task_id) is current:
+                self._continuing.pop(task_id, None)
+
+    async def submit_decision(self, task_id: str, decision_id: str, option_id: str) -> V2Task:
+        self.resolve_decision(task_id, decision_id, option_id)
+        await self.continue_after_decision(task_id)
+        return self.store.get_task(task_id)
 
     async def _continue_after_decision(self, task: V2Task) -> None:
         """门决策后的续推；按本决策记录之后的已完成发言数续传（供 submit_decision / retry 复用）。"""
@@ -312,7 +347,8 @@ class Orchestrator:
         queue.append({"intent": intent, "text": text})
         return {"received": True, "position": len(queue), "ack": demo.ACK_RECEIVED}
 
-    async def retry(self, task_id: str) -> V2Task:
+    def retry_prepare(self, task_id: str) -> V2Task:
+        """同步重置失败任务：清 error、转 running（HTTP 立即返回，续跑交给 resume_driver）。"""
         task = self.store.get_task(task_id)
         if task is None:
             raise ValueError(f"task not found: {task_id}")
@@ -322,18 +358,26 @@ class Orchestrator:
         task.status = "running"
         self._save(task)
         self._publish(task_id, "status_change", {"status": "running"})
+        return task
+
+    async def resume_driver(self, task_id: str) -> None:
+        """失败重试后的续跑：有开着的门等确认；有已确认决策则续推；否则从头推进循环。"""
+        task = self.store.get_task(task_id)
+        if task is None:
+            return
         last = task.decisions[-1] if task.decisions else None
         if last is not None and last.status == "open":
             task.status = "waiting_confirmation"
             self._save(task)
             self._publish(task_id, "status_change", {"status": "waiting_confirmation"})
         elif last is not None:
-            try:
-                await self._continue_after_decision(task)
-            except Exception as exc:
-                self._mark_failed(task, exc)
+            await self.continue_after_decision(task_id)
         else:
             await self.run_task(task_id)
+
+    async def retry(self, task_id: str) -> V2Task:
+        self.retry_prepare(task_id)
+        await self.resume_driver(task_id)
         return self.store.get_task(task_id)
 
     async def end_now(self, task_id: str) -> V2Task:

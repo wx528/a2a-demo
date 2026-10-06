@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, CircleHelp, Clock, MessagesSquare, Pause } from "lucide-react"
+import { AlertTriangle, CheckCircle2, CircleHelp, Clock, FlaskConical, MessagesSquare, Pause } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -58,6 +58,24 @@ export function StatusBadge({ status, sub }: { status: string; sub?: string }) {
       <Icon className="size-3" aria-hidden />
       {config.label}
       {sub ? <span className="text-muted-foreground">· {sub}</span> : null}
+    </span>
+  )
+}
+
+export function DemoBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-warning-bg px-[9px] py-[3px] text-xs font-medium text-warning">
+      <FlaskConical className="size-3" aria-hidden />
+      演示模式 · 非实时
+    </span>
+  )
+}
+
+export function DemoChip() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-warning-bg px-1.5 py-px text-[11px] font-medium text-warning">
+      <FlaskConical className="size-2.5" aria-hidden />
+      演示
     </span>
   )
 }

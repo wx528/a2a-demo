@@ -286,83 +286,49 @@ def _demo_outcome(task: V2Task) -> OutcomeDoc:
     )
 
 
-def _derived_outcome(task: V2Task) -> OutcomeDoc:
-    texts = _confirmed_constraint_texts(task)
-    last_statement = next(
-        (t for t in reversed(task.turns) if t.kind == "statement" and t.body),
+_FALLBACK_CONCLUSION = "讨论已完成，建议草稿待整理"
+
+
+def _sage_recommend_turn(task: V2Task):
+    return next(
+        (
+            t
+            for t in reversed(task.turns)
+            if t.kind == "statement" and t.author == "sage" and t.stage == "recommend"
+        ),
         None,
     )
-    reasons = [
-        Reason(
-            title="已确认的边界",
-            body="；".join(texts) if texts else "暂无已确认约束，需在澄清阶段补充。",
-            refs=[],
-        ),
-    ]
+
+
+def _derived_outcome(task: V2Task) -> OutcomeDoc:
+    """真实任务成果：只从已落库的讨论 turns 组装，绝不编造样板内容（§2）。
+
+    结论取 Sage 发言的真实标题与正文摘录；理由取最近的非 Sage 发言；
+    方案对比/行动项/验收条件等留空，由团队在成果页补充。
+    """
+    sage = _sage_recommend_turn(task)
+    if sage is not None and sage.title:
+        conclusion = sage.title
+        if sage.body:
+            conclusion = f"{conclusion}\n{sage.body[:200]}"
+    else:
+        conclusion = _FALLBACK_CONCLUSION
+    recent = [t for t in task.turns if t.kind == "statement" and t.author != "sage"]
+    reasons = [Reason(title=t.title, body=t.body[:120], refs=[t.seq]) for t in recent[-3:]]
     evidence = [
-        EvidenceItem(seq_ref=t.seq, stage=t.stage, author=t.author, quote=t.body[:40])
+        EvidenceItem(seq_ref=t.seq, stage=t.stage, author=t.author, quote=t.body[:60])
         for t in task.turns
-        if t.body
+        if t.kind in ("statement", "decision_record")
     ]
-    if last_statement is not None:
-        reasons.append(
-            Reason(
-                title=last_statement.title or "最近一轮讨论",
-                body=last_statement.body[:80],
-                refs=[last_statement.seq],
-            )
-        )
-    reasons.append(
-        Reason(
-            title="用试点结果决定是否扩展",
-            body="以验收条件衡量结果，通过后再决定是否扩大范围。",
-            refs=[],
-        )
-    )
     return OutcomeDoc(
-        conclusion=f"整理权衡：建议围绕「{task.goal_text}」小范围试点",
+        conclusion=conclusion,
         summary_groups=SummaryGroups(
-            confirmed=texts,
-            disputed=["方案取舍尚有分歧"],
-            unverified=["协议能力与内部实现的适配尚未核实"],
+            confirmed=_confirmed_constraint_texts(task),
+            disputed=[],
+            unverified=[t.title for t in task.turns if t.verified and t.title],
         ),
         reasons=reasons,
-        path_comparison=[
-            PathOption(
-                name="保持现状",
-                desc="沿用现有流程，不引入新协议",
-                pros=["无需新增运维，权限边界不变"],
-                cons=["协作收益无法验证"],
-                fit="适合：尚未找到明确协作场景时",
-                recommended=False,
-            ),
-            PathOption(
-                name="小范围试点",
-                desc="用单场景验证价值，控制接入范围",
-                pros=["以小范围验证价值，控制信任与接入范围"],
-                cons=["需要补齐身份映射与异常恢复验证"],
-                fit="前提：团队审批与验收条件明确",
-                recommended=True,
-            ),
-        ],
         evidence=evidence,
-        open_questions=["还有哪些关键信息待补齐？", "试点成本与风险是否可承受？"],
-        actions=[
-            ActionItem(
-                title="补齐试点前置信息",
-                detail="确认身份映射、授权边界与异常恢复方案。",
-            ),
-            ActionItem(
-                title="执行小范围试点并复盘",
-                detail="记录试点结果，对照验收条件判断是否扩展。",
-            ),
-        ],
-        acceptance=[
-            AcceptanceItem(
-                title="试点结论可复核",
-                detail="验收条件明确，结果有记录、可回查。",
-            ),
-        ],
     )
 
 

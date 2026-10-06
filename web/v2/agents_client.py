@@ -92,13 +92,20 @@ class AgentSpeakerBackend:
         prompt = build_turn_prompt(task, author, key)
         try:
             text = await self._stream_text(task, author, url, prompt)
+            self._require_valid_text(text, author)
         except Exception:
             await asyncio.sleep(1)
             try:
                 text = await self._stream_text(task, author, url, prompt)
+                self._require_valid_text(text, author)
             except Exception as retry_exc:
                 raise AgentCallError(f"角色 {author} 调用失败：{retry_exc}") from retry_exc
         return self._split_turn_text(text)
+
+    def _require_valid_text(self, text: str, author: str) -> None:
+        """空响应或角色 Agent 的 fallback 占位文案一律视为失败（§3.1：绝不静默用占位发言）。"""
+        if not text.strip() or "暂未能生成发言" in text:
+            raise AgentCallError(f"角色 {author} 未产出有效发言")
 
     async def _stream_text(self, task: V2Task, author: str, url: str, prompt: str) -> str:
         client = A2AJSONRPCClient(url)

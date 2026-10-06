@@ -2,7 +2,7 @@ import { FileText, MessagesSquare } from "lucide-react"
 import { toast } from "sonner"
 import { useV2Tasks } from "@/hooks/useV2Tasks"
 import { useHashRoute } from "@/lib/router"
-import { StatusBadge } from "@/components/v2/StatusBadge"
+import { DemoChip, StatusBadge } from "@/components/v2/StatusBadge"
 import type { V2TaskSummaryT } from "@/lib/v2api"
 
 const PROGRESS_LINES: Record<string, string> = {
@@ -90,8 +90,11 @@ export function RecentTasks() {
                   <RowIcon className="size-[18px] text-muted-foreground" aria-hidden />
                 </span>
                 <span className="flex w-[336px] min-w-0 max-w-full flex-col gap-1">
-                  <span className="truncate text-[15px] font-bold text-foreground">
-                    {task.goal_text}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[15px] font-bold text-foreground">
+                      {task.goal_text}
+                    </span>
+                    {task.demo ? <DemoChip /> : null}
                   </span>
                   <span className="truncate text-[13px] text-muted-foreground">
                     {task.outcome_summary || "暂无成果摘要"}
