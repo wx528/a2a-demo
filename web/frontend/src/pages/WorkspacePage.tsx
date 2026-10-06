@@ -15,7 +15,7 @@ import { TurnCard } from "@/components/v2/TurnCard"
 import { UserNoteCard } from "@/components/v2/UserNoteCard"
 import { useV2Stream } from "@/hooks/useV2Stream"
 import { useHashRoute } from "@/lib/router"
-import { STAGE_LABELS, STAGE_ORDER } from "@/lib/roles"
+import { roleMeta, STAGE_LABELS, STAGE_ORDER } from "@/lib/roles"
 import { endTask, resumeTask, retryTask, type V2TaskT } from "@/lib/v2api"
 import { cn } from "@/lib/utils"
 
@@ -27,7 +27,7 @@ function stageLabel(stage: string): string {
 }
 
 export function WorkspacePage({ id }: { id: string }) {
-  const { task, connected, error, focusSeq, refresh } = useV2Stream(id)
+  const { task, connected, error, focusSeq, thinkingAuthor, refresh } = useV2Stream(id)
   const { navigate } = useHashRoute()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -295,7 +295,7 @@ export function WorkspacePage({ id }: { id: string }) {
       }
     >
       <div className="px-6 pt-6">
-        <MeetingPod task={task} />
+        <MeetingPod task={task} thinkingAuthor={thinkingAuthor} />
       </div>
       <div className="flex flex-col gap-6 p-6 xl:flex-row">
         <section className="mx-auto flex w-full min-w-0 max-w-[800px] flex-1 flex-col gap-4">
@@ -329,7 +329,27 @@ export function WorkspacePage({ id }: { id: string }) {
                 className="flex max-h-[600px] flex-col gap-[18px] overflow-y-auto pr-1"
               >
                 {items}
-                {task.turns.length === 0 ? (
+                {thinkingAuthor && task.status === "running" ? (
+                  <div
+                    role="status"
+                    aria-label={`${roleMeta(thinkingAuthor).zh}正在思考`}
+                    className="flex items-center gap-3 py-1"
+                  >
+                    <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-panel text-[19px]">
+                      {roleMeta(thinkingAuthor).emoji}
+                    </span>
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
+                      {roleMeta(thinkingAuthor).zh} · {roleMeta(thinkingAuthor).en} 正在思考…
+                      <span className="flex items-center gap-1" aria-hidden>
+                        <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
+                        <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:150ms]" />
+                        <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:300ms]" />
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
+                {task.turns.length === 0 && !thinkingAuthor ? (
                   <p className="py-6 text-center text-xs text-muted-foreground">等待发言开始…</p>
                 ) : null}
                 <div ref={sentinelRef} aria-hidden className="h-px shrink-0" />

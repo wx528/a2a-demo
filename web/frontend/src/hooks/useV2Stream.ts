@@ -25,10 +25,11 @@ function parsePayload<T>(event: MessageEvent): T | null {
 }
 
 export function useV2Stream(taskId: string | null) {
-  const [task, setTask] = useState<V2StreamTaskT | null>(null)
-  const [connected, setConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [focusSeq, setFocusSeq] = useState<number | null>(null)
+const [task, setTask] = useState<V2StreamTaskT | null>(null)
+const [connected, setConnected] = useState(false)
+const [error, setError] = useState<string | null>(null)
+const [focusSeq, setFocusSeq] = useState<number | null>(null)
+const [thinkingAuthor, setThinkingAuthor] = useState<string | null>(null)
   const taskRef = useRef<V2StreamTaskT | null>(null)
   const closedRef = useRef<Set<string>>(new Set())
   const refreshSeqRef = useRef(0)
@@ -77,6 +78,7 @@ export function useV2Stream(taskId: string | null) {
     update(null)
     setError(null)
     setConnected(false)
+    setThinkingAuthor(null)
 
     getTask(taskId)
       .then((data) => {
@@ -145,10 +147,19 @@ export function useV2Stream(taskId: string | null) {
       })
     })
 
+    source.addEventListener("turn_start", (event) => {
+      if (cancelled) return
+      const data = parsePayload<{ author?: unknown }>(event)
+      if (!data || typeof data.author !== "string") return
+      // 该角色的首个 token 到达（turn_delta）或发言结束前，会议舱/讨论区显示「思考中」
+      setThinkingAuthor(data.author)
+    })
+
     source.addEventListener("turn_delta", (event) => {
       if (cancelled) return
       const data = parsePayload<DeltaPayloadT>(event)
       if (!data || typeof data.author !== "string" || typeof data.delta !== "string") return
+      setThinkingAuthor((current) => (current === data.author ? null : current))
       const prev = taskRef.current
       if (!prev) return
       const turns = [...prev.turns]
@@ -184,6 +195,7 @@ export function useV2Stream(taskId: string | null) {
 
     source.addEventListener("turn_done", () => {
       if (cancelled) return
+      setThinkingAuthor(null)
       const prev = taskRef.current
       if (prev) {
         for (const turn of prev.turns) {
@@ -215,5 +227,5 @@ export function useV2Stream(taskId: string | null) {
     }
   }, [taskId, update, applyRefresh])
 
-  return { task, connected, error, focusSeq, refresh }
+  return { task, connected, error, focusSeq, thinkingAuthor, refresh }
 }

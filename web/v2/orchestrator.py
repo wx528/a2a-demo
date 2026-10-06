@@ -120,6 +120,9 @@ class Orchestrator:
 
     async def _speak(self, task: V2Task, key: str) -> Turn:
         author = _AUTHOR_BY_KEY[key]
+        # 发言生成可能耗时较长（LLM 思考期无增量）：先广播 turn_start，
+        # 前端据此在会议舱与讨论区显示「思考中」动画，避免看起来像连接中断。
+        self._publish(task.id, "turn_start", {"author": author, "key": key})
         title, body, verified = await self.backend.speak(task, author, key)
         self._adopt_persisted(task)
         turn = self._make_turn(
