@@ -450,6 +450,22 @@ export function OutcomePage({ id }: { id: string }) {
             aria-label="成果正文"
             className="flex w-full min-w-0 flex-col gap-7 rounded-[14px] border border-border bg-card p-7 xl:flex-1"
           >
+            {editing && draft ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-bold text-foreground">主结论</span>
+                <textarea
+                  value={draft.conclusion}
+                  onChange={(event) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, conclusion: event.target.value } : prev,
+                    )
+                  }
+                  aria-label="主结论"
+                  rows={3}
+                  className={cn(EDIT_FIELD, "resize-y text-base leading-relaxed")}
+                />
+              </div>
+            ) : null}
             <div className="flex flex-col gap-5">
               <SectionHeader index="01" title="为什么是内部试点" />
               {reasons.length === 0 ? (

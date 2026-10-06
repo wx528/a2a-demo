@@ -20,32 +20,52 @@ def _phase_or_none(delta: str) -> Optional[str]:
 
 
 class ThinkFilter:
-    """累积增量并过滤 <think>…</think> 推理前缀：见到闭合标签后才放行后续内容。"""
+    """过滤一条流中任意数量的 <think>…</think> 块（可重复、可跨增量截断标签）。
+
+    GLM 等推理模型会先输出自己的思考块，agent_loop 又会把草稿/自审包进
+    额外的 think 块，因此不能只吞到第一个闭合标签就放行后续内容。
+    """
+
+    _OPEN = "<think>"
+    _CLOSE = "</think>"
 
     def __init__(self):
-        self.buf = ""
-        self.open_ended = False
+        self.in_think = False
+        self.tail = ""  # 可能是被截断的标签前缀，留待下个增量裁决
 
     def feed(self, delta: str) -> str:
-        if self.open_ended:
-            return delta
-        self.buf += delta
-        end = self.buf.find("</think>")
-        if end != -1:
-            self.open_ended = True
-            self.buf = ""
-            return delta[end + len("</think>"):]
-        # 保留可能被截断的标签尾巴，避免误发半个 "<thi"
-        keep = 8
-        if len(self.buf) > keep:
-            pending, emit = self.buf[-keep:], self.buf[:-keep]
-            self.buf = pending
-            return emit
-        return ""
+        data = self.tail + delta
+        self.tail = ""
+        out: list[str] = []
+        while data:
+            if self.in_think:
+                idx = data.find(self._CLOSE)
+                if idx == -1:
+                    keep = len(self._CLOSE) - 1
+                    self.tail = data[-keep:] if len(data) > keep else data
+                    data = ""
+                else:
+                    data = data[idx + len(self._CLOSE):]
+                    self.in_think = False
+            else:
+                idx = data.find(self._OPEN)
+                if idx == -1:
+                    keep = len(self._OPEN) - 1
+                    cut = len(data) - keep
+                    if cut > 0:
+                        out.append(data[:cut])
+                        self.tail = data[cut:]
+                    else:
+                        self.tail = data
+                    data = ""
+                else:
+                    out.append(data[:idx])
+                    data = data[idx + len(self._OPEN):]
+                    self.in_think = True
+        return "".join(out)
 
     def final_text(self) -> str:
-        if self.open_ended:
+        rest, self.tail = self.tail, ""
+        if self.in_think:
             return ""
-        text = self.buf.split("</think>")[-1]
-        self.buf = ""
-        return text
+        return rest

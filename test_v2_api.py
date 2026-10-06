@@ -11,6 +11,7 @@ def client(tmp_path, monkeypatch):
     import importlib
     import web.v2.routes as v2_routes
     # routes 在模块导入时读取 env 建立单例，需先重载 routes 再重载 main 才能生效
+    monkeypatch.setenv("V2_DEMO_TURN_DELAY", "0")
     importlib.reload(v2_routes)
     import web.main as m
     importlib.reload(m)

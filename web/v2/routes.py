@@ -51,6 +51,9 @@ _PROBE_TIMEOUT = 2.0
 _PROBE_PATH = "/.well-known/agent-card.json"
 
 
+_DEMO_TURN_DELAY = float(os.getenv("V2_DEMO_TURN_DELAY", "0.6"))
+
+
 class DemoOrRealBackend:
     """发言后端分流器：demo 任务用确定性脚本，真实任务调用角色 Agent。"""
 
@@ -59,6 +62,8 @@ class DemoOrRealBackend:
 
     async def speak(self, task: V2Task, author: str, key: str) -> tuple[str, str, bool]:
         if task.demo:
+            # 演示发言按节奏推进：讨论逐条展开，pause/resume 也因此可从外部介入
+            await asyncio.sleep(_DEMO_TURN_DELAY)
             return demo.statement(key, task)
         return await self._real.speak(task, author, key)
 

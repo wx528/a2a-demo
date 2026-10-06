@@ -156,7 +156,7 @@ def stream_response(task: Task, store: InMemoryTaskStore) -> Iterator[str]:
         system=ROLE_PERSONA_PROMPTS[role],
         user=prompt,
         search_context=search_context,
-        max_tokens=2000,
+        max_tokens=8000,
         fallback=FALLBACK_TEMPLATE.format(zh_name=meta.zh_name),
     )
 
@@ -165,7 +165,7 @@ def process_task(task: Task, store: InMemoryTaskStore):
     """非流式发言：同一人格，一次成稿。"""
     store.update_status(task, TaskState.WORKING, "正在思考...")
 
-    response = call_llm(ROLE_PERSONA_PROMPTS[role], collect_user_text(task), max_tokens=2000)
+    response = call_llm(ROLE_PERSONA_PROMPTS[role], collect_user_text(task), max_tokens=8000)
     if not response:
         response = FALLBACK_TEMPLATE.format(zh_name=meta.zh_name)
     response = response.split("</think>")[-1].strip()
