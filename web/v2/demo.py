@@ -333,6 +333,7 @@ def _derived_outcome(task: V2Task) -> OutcomeDoc:
 
 
 def build_outcome(task: V2Task) -> OutcomeDoc:
-    if task.goal_text == DEMO_GOAL:
+    # 只有演示任务才允许脚本化成果；真实任务即使目标撞字符串也必须用真实内容组装（§2）
+    if task.demo and task.goal_text == DEMO_GOAL:
         return _demo_outcome(task)
     return _derived_outcome(task)
