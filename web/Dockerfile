@@ -26,6 +26,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY shared/ ./shared/
 COPY debate/personas.py debate/run_debate.py ./debate/
 COPY web/*.py ./web/
+COPY web/v2/ ./web/v2/
 COPY --from=frontend /app/frontend/dist ./web/frontend/dist
 
 CMD ["python", "web/main.py"]
