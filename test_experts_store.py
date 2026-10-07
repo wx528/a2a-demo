@@ -28,6 +28,26 @@ def test_crud_and_builtin_protection(tmp_path):
     assert s.get_expert("hermes1") is None
 
 
+def test_update_cannot_strip_builtin_protection(tmp_path):
+    s = V2ExpertStore(str(tmp_path / "db.sqlite"))
+    s.init()
+    with pytest.raises(ValueError):
+        s.update_expert("ada", {"source": "custom"})
+    with pytest.raises(ValueError):
+        s.delete_expert("ada")
+
+
+def test_update_cannot_change_id(tmp_path):
+    s = V2ExpertStore(str(tmp_path / "db.sqlite"))
+    s.init()
+    from web.v2.experts import Expert
+    s.create_expert(Expert(id="custom1", name="C", url="http://x:1"))
+    with pytest.raises(ValueError):
+        s.update_expert("custom1", {"id": "custom2"})
+    assert s.get_expert("custom2") is None
+    assert s.get_expert("custom1").name == "C"
+
+
 def test_task_snapshot_fields():
     from web.v2.models import TaskExpert, V2Task
     t = V2Task(id="t", goal_text="g", created_at=1.0, updated_at=1.0)

@@ -103,8 +103,6 @@ class V2ExpertStore:
             conn.close()
 
     def create_expert(self, expert: Expert):
-        if self.get_expert(expert.id) is not None:
-            raise ValueError(f"专家 id 已存在：{expert.id}")
         conn = self._connect()
         try:
             conn.execute(
@@ -112,6 +110,8 @@ class V2ExpertStore:
                 (expert.id, expert.model_dump_json(), 1 if expert.enabled else 0),
             )
             conn.commit()
+        except sqlite3.IntegrityError:
+            raise ValueError(f"专家 id 已存在：{expert.id}")
         finally:
             conn.close()
 
@@ -119,6 +119,12 @@ class V2ExpertStore:
         existing = self.get_expert(expert_id)
         if existing is None:
             raise ValueError(f"专家不存在：{expert_id}")
+        if "id" in fields:
+            raise ValueError("专家 id 不可修改")
+        if "source" in fields:
+            if existing.source == "builtin":
+                raise ValueError("内置专家身份不可变更")
+            raise ValueError("source 不可修改")
         updated = Expert.model_validate({**existing.model_dump(), **fields})
         conn = self._connect()
         try:
