@@ -1,24 +1,28 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   ArrowLeft,
   ArrowRight,
   ChevronRight,
   FileText,
   Loader2,
+  UserRoundCheck,
 } from "lucide-react"
 import { toast } from "sonner"
 import { AdvancedSettings } from "@/components/v2/AdvancedSettings"
 import { ConstraintEditor } from "@/components/v2/ConstraintEditor"
 import { ExpertPanel } from "@/components/v2/ExpertPanel"
-import { RoleDuties } from "@/components/v2/RoleDuties"
+import { PurposeSlots } from "@/components/v2/PurposeSlots"
 import { Shell } from "@/components/v2/Shell"
 import { StagePath } from "@/components/v2/StagePath"
 import { ThemeToggle } from "@/components/v2/ThemeToggle"
+import { DEFAULT_ASSIGNMENTS } from "@/lib/purposes"
 import { useHashRoute } from "@/lib/router"
 import {
   getTask,
+  listExperts,
   startTask,
   type AdvancedModeT,
+  type ExpertT,
   type V2TaskT,
 } from "@/lib/v2api"
 import { cn } from "@/lib/utils"
@@ -36,6 +40,17 @@ export function PlanPage() {
   const [rounds, setRounds] = useState(2)
   const [starting, setStarting] = useState(false)
   const [expertPanelOpen, setExpertPanelOpen] = useState(false)
+  const [experts, setExperts] = useState<ExpertT[]>([])
+  const [assignments, setAssignments] =
+    useState<Record<string, string>>(DEFAULT_ASSIGNMENTS)
+
+  const refreshExperts = useCallback(() => {
+    listExperts()
+      .then((data) => setExperts(data))
+      .catch((err: unknown) => {
+        toast.error(err instanceof Error ? err.message : "加载专家失败，请重试")
+      })
+  }, [])
 
   useEffect(() => {
     if (draftId) return
@@ -55,6 +70,7 @@ export function PlanPage() {
         setSeededConstraints(texts)
         setMode(data.advanced_mode)
         setRounds(data.advanced_rounds)
+        setAssignments({ ...DEFAULT_ASSIGNMENTS, ...data.assignments })
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -64,6 +80,11 @@ export function PlanPage() {
       cancelled = true
     }
   }, [draftId])
+
+  useEffect(() => {
+    if (!draftId) return
+    refreshExperts()
+  }, [draftId, refreshExperts])
 
   if (!draftId) return null
 
@@ -82,6 +103,7 @@ export function PlanPage() {
         constraints,
         advanced_mode: mode,
         advanced_rounds: submitRounds,
+        assignments,
       })
       navigate(`#/task/${task.id}`)
     } catch (err) {
@@ -201,20 +223,39 @@ export function PlanPage() {
                 </div>
               </section>
               <section className="flex min-w-0 flex-1 flex-col gap-5 rounded-[14px] border border-border bg-card p-6">
-                <RoleDuties
-                  headerAction={
-                    <button
-                      type="button"
-                      onClick={() => setExpertPanelOpen(true)}
-                      className={cn(
-                        "shrink-0 rounded-md text-[13px] text-secondary-foreground transition-colors hover:text-foreground",
-                        FOCUS_RING,
-                      )}
-                    >
-                      管理专家
-                    </button>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="min-w-0 truncate text-lg font-bold text-foreground">
+                    四个视角，一份可用的判断
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setExpertPanelOpen(true)}
+                    className={cn(
+                      "shrink-0 rounded-md text-[13px] text-secondary-foreground transition-colors hover:text-foreground",
+                      FOCUS_RING,
+                    )}
+                  >
+                    管理专家
+                  </button>
+                </div>
+                <PurposeSlots
+                  assignments={assignments}
+                  experts={experts}
+                  demo={task.demo}
+                  onAssign={(purpose, expertId) =>
+                    setAssignments((prev) => ({ ...prev, [purpose]: expertId }))
                   }
+                  onManage={() => setExpertPanelOpen(true)}
                 />
+                <div className="flex items-start gap-2.5 rounded-[10px] bg-success-bg p-3.5">
+                  <UserRoundCheck
+                    className="mt-0.5 size-[18px] shrink-0 text-success"
+                    aria-hidden
+                  />
+                  <p className="text-sm text-success">
+                    你负责关键约束与取舍。AI 负责展开论证、整理权衡，不替代团队审批。
+                  </p>
+                </div>
               </section>
             </div>
             <StagePath />
@@ -269,6 +310,7 @@ export function PlanPage() {
         <ExpertPanel
           open={expertPanelOpen}
           onClose={() => setExpertPanelOpen(false)}
+          onChanged={refreshExperts}
         />
       </div>
     </Shell>
