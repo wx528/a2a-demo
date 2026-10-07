@@ -343,6 +343,12 @@ ROLE_AGENT_URLS="ada=http://127.0.0.1:8011,turing=http://127.0.0.1:8012,linus=ht
 V2_DEMO_TURN_DELAY=0.6       # demo pacing, seconds per turn
 ```
 
+### Security notes
+
+- **Bind address**: every service listens on `BIND_HOST` (default `127.0.0.1` when run locally); docker compose sets `BIND_HOST=0.0.0.0` explicitly since container port mapping requires it. The `HOST` variable only names the host inside Agent Card URLs.
+- **API key**: set `A2A_API_KEY` to require `Authorization: Bearer <key>` or `X-API-Key: <key>` on every agent's `/rpc` + `/rpc/stream` and on orchestrator mutations (`/create-article`, `/direct/*`, `/agents/refresh`); the Agent Card then declares the scheme. Internal calls (web/orchestrator → agents) attach the key automatically. Leave it unset only for loopback-only demos.
+- The **web** UI at :8080 has no built-in auth (browser demo) — keep it on a trusted network.
+
 ### Frontend (web/frontend)
 
 ```bash

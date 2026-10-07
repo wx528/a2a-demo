@@ -33,6 +33,7 @@ from web.v2.util import ThinkFilter as _ThinkFilter, _PHASE_LINE, _phase_or_none
 
 
 WEB_PORT = int(os.getenv("PORT", 8080))
+BIND_HOST = os.getenv("BIND_HOST", "127.0.0.1")  # 监听接口：本地默认只听回环，容器经 BIND_HOST=0.0.0.0 显式放开
 RESEARCH_AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://research-agent:8001")
 WRITING_AGENT_URL = os.getenv("WRITING_AGENT_URL", "http://writing-agent:8002")
 DEBATE_AGENT_URL = os.getenv("DEBATE_AGENT_URL", "http://localhost:8003")
@@ -866,4 +867,4 @@ async def meeting_events(meeting_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=WEB_PORT)
+    uvicorn.run(app, host=BIND_HOST, port=WEB_PORT)

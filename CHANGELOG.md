@@ -26,6 +26,11 @@
 - docker compose 新增 4 个角色 agent 容器（8011-8014）；web 编排内置化（`web/v2/` 包），角色发言经 A2A JSON-RPC 流式调用
 - 内置专家地址从 `ROLE_AGENT_URLS` env 派生（compose 用容器名、本地回退 127.0.0.1），专家注册表与实际可达地址保持同源
 
+### Security
+
+- **修复监听地址硬编码**（issue #1，感谢 @shunfeng8421）：此前所有服务 `uvicorn.run` 硬编码 `host="0.0.0.0"`，忽略 `HOST` env；现改为独立的 `BIND_HOST`（本地裸跑默认 `127.0.0.1` 只听回环，docker compose 显式 `BIND_HOST=0.0.0.0`），涉及 research/writing/debate/role agents、orchestrator、web 全部入口
+- **新增可选 API Key 鉴权**（issue #1 建议）：设置 `A2A_API_KEY` 后，所有 agent 的 `/rpc`、`/rpc/stream` 与 orchestrator 写操作要求 `Authorization: Bearer` 或 `X-API-Key`，Agent Card 附带 `securitySchemes` 声明；内部互调（`shared/a2a_client`）自动附带 key；未设置时行为不变
+
 - Web 会议室**步进模式（默认）**：逐轮驱动 API（`POST /turns/next` 一次执行一轮，`turn_done` 收尾），发言前暂停可插入用户发言（辩论中成为观众质询），一键切换自动连播；`GET /next-turn` 预览下一位，`GET /api/personas` 人格列表
 - Web 会议室**辩论模式**：正/反方人格下拉（苏格拉底/休谟/康德/尼采/怀疑论工程师/风险投资人）+ 1-3 轮 + 裁判总结卡片，引用可点击；接 `debate-agent`（`DEBATE_AGENT_URL`）
 - debate-agent 输入契约新增可选 `[观众质询/INQUIRY]` 段

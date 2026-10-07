@@ -14,7 +14,7 @@ import sys
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -22,10 +22,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.env import load_env
 load_env()
 from shared.a2a_client import A2AJSONRPCClient
+from shared.a2a_server import require_api_key
 from orchestrator.registry import AgentRegistry
 
 
 ORCHESTRATOR_PORT = int(os.getenv("PORT", 8000))
+BIND_HOST = os.getenv("BIND_HOST", "127.0.0.1")  # 监听接口：本地默认只听回环，容器经 BIND_HOST=0.0.0.0 显式放开
 
 logger = logging.getLogger("orchestrator")
 
@@ -126,14 +128,14 @@ async def list_agents():
     return {card["name"]: card for card in cards}
 
 
-@app.post("/agents/refresh")
+@app.post("/agents/refresh", dependencies=[Depends(require_api_key)])
 async def refresh_agents():
     """重新执行发现（新增 agent 后调用，无需重启编排器）。"""
     await registry.discover(AGENT_URLS)
     return {"discovered": registry.names()}
 
 
-@app.post("/create-article")
+@app.post("/create-article", dependencies=[Depends(require_api_key)])
 async def create_article(req: CreateArticleRequest):
     """完整工作流：研究 -> 写作（按 skill 动态路由）。"""
     topic = req.topic
@@ -180,7 +182,7 @@ async def create_article(req: CreateArticleRequest):
     }
 
 
-@app.post("/direct/{agent_name}")
+@app.post("/direct/{agent_name}", dependencies=[Depends(require_api_key)])
 async def direct_call(agent_name: str, req: CreateArticleRequest):
     """直接调用某个 agent（支持 card 名称 / 短名 / skill id），方便单独测试。"""
     url = _resolve_agent(agent_name)
@@ -196,4 +198,4 @@ async def direct_call(agent_name: str, req: CreateArticleRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=ORCHESTRATOR_PORT)
+    uvicorn.run(app, host=BIND_HOST, port=ORCHESTRATOR_PORT)

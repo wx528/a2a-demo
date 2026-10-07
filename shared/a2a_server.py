@@ -5,12 +5,13 @@ A2A JSON-RPC 2.0 服务端公共组件。
 
 import asyncio
 import json
+import os
 import re
 import threading
 import uuid
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -45,6 +46,34 @@ class JSONRPCErrorException(Exception):
 
     def __init__(self, error: JSONRPCError):
         self.error = error
+
+
+# ---------------------------------------------------------------------------
+# 可选 API Key 鉴权（A2A_API_KEY）
+# ---------------------------------------------------------------------------
+# 未设置 A2A_API_KEY 时所有端点保持开放（本地演示默认）。
+# 设置后，/rpc 与 /rpc/stream 要求 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`，
+# Agent Card 会附带 securitySchemes 声明。
+
+
+def required_api_key() -> str:
+    """每次调用时读取 env，便于测试与运行期轮换。"""
+    return os.getenv("A2A_API_KEY", "").strip()
+
+
+def request_authorized(req: Request) -> bool:
+    key = required_api_key()
+    if not key:
+        return True
+    if req.headers.get("authorization", "") == f"Bearer {key}":
+        return True
+    return req.headers.get("x-api-key", "") == key
+
+
+async def require_api_key(req: Request) -> None:
+    """FastAPI 依赖：给自建路由（如 orchestrator）复用的 API Key 门禁。"""
+    if not request_authorized(req):
+        raise HTTPException(status_code=401, detail="Unauthorized: missing or invalid API key")
 
 
 def _a2a_reason(error_name: str) -> str:
@@ -395,10 +424,27 @@ class A2AJSONRPCServer:
         @app.get("/.well-known/agent-card.json")
         @app.get("/.well-known/agent.json", include_in_schema=False)
         async def get_agent_card():
-            return self.agent_card.model_dump(by_alias=True, exclude_none=True)
+            d = self.agent_card.model_dump(by_alias=True, exclude_none=True)
+            if required_api_key():
+                d["securitySchemes"] = {
+                    "apiKey": {"type": "apiKey", "in": "header", "name": "X-API-Key"}
+                }
+                d["security"] = [{"apiKey": []}]
+            return d
+
+        def _unauthorized(rpc_id: Any) -> JSONResponse:
+            return JSONResponse(
+                JSONRPCResponse(
+                    id=rpc_id,
+                    error=JSONRPCError(code=-32000, message="Unauthorized: missing or invalid API key"),
+                ).model_dump(),
+                status_code=401,
+            )
 
         @app.post("/rpc")
         async def rpc_endpoint(req: Request):
+            if not request_authorized(req):
+                return _unauthorized(None)
             body = await req.json()
             rpc_id: Any = body.get("id") if isinstance(body, dict) else None
             try:
@@ -432,6 +478,8 @@ class A2AJSONRPCServer:
 
         @app.post("/rpc/stream")
         async def rpc_stream_endpoint(req: Request):
+            if not request_authorized(req):
+                return _unauthorized(None)
             body = await req.json()
             rpc_req = JSONRPCRequest.model_validate(body)
             method = rpc_req.method

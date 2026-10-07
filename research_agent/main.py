@@ -27,6 +27,7 @@ from shared.task_store import SqliteTaskStore
 
 AGENT_PORT = int(os.getenv("PORT", 8001))
 AGENT_HOST = os.getenv("HOST", "localhost")
+BIND_HOST = os.getenv("BIND_HOST", "127.0.0.1")  # 监听接口：本地默认只听回环，容器经 BIND_HOST=0.0.0.0 显式放开
 # 可通过 AGENT_URL 覆盖 Agent Card 中对外暴露的 URL（例如公网地址、Docker 外部地址）
 AGENT_URL = os.getenv("AGENT_URL", f"http://{AGENT_HOST}:{AGENT_PORT}")
 
@@ -127,4 +128,4 @@ app = server.build_app(title="Research Agent (A2A / JSON-RPC)")
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+    uvicorn.run(app, host=BIND_HOST, port=AGENT_PORT)

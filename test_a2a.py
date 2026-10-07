@@ -538,6 +538,57 @@ def test_cancel_unknown_task_error_code():
     assert err["data"][0]["reason"] == "TASK_NOT_FOUND"
 
 
+def test_api_key_unset_keeps_rpc_open(monkeypatch):
+    """未设置 A2A_API_KEY 时 /rpc 保持开放（本地演示默认）。"""
+    monkeypatch.delenv("A2A_API_KEY", raising=False)
+    client = TestClient(_build_test_agent(lambda task, store: task))
+    resp = client.post(
+        "/rpc",
+        json={"jsonrpc": "2.0", "id": "k1", "method": "SendMessage", "params": {"message": _msg("k1", "hi")}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json().get("error") is None
+
+
+def test_api_key_blocks_unauthenticated_rpc(monkeypatch):
+    """设置 A2A_API_KEY 后：无凭据 401；X-API-Key 与 Bearer 均可通过。"""
+    monkeypatch.setenv("A2A_API_KEY", "secret-key")
+    client = TestClient(_build_test_agent(lambda task, store: task))
+    payload = {"jsonrpc": "2.0", "id": "k2", "method": "SendMessage", "params": {"message": _msg("k2", "hi")}}
+
+    denied = client.post("/rpc", json=payload)
+    assert denied.status_code == 401, denied.text
+    assert denied.json()["error"]["code"] == -32000
+
+    by_header = client.post("/rpc", json=payload, headers={"X-API-Key": "secret-key"})
+    assert by_header.status_code == 200, by_header.text
+    assert by_header.json().get("error") is None
+
+    by_bearer = client.post("/rpc", json=payload, headers={"Authorization": "Bearer secret-key"})
+    assert by_bearer.status_code == 200, by_bearer.text
+
+
+def test_api_key_blocks_stream_and_card_declares_scheme(monkeypatch):
+    """设置 key 后 /rpc/stream 同样 401；Agent Card 附带 securitySchemes 声明。"""
+    monkeypatch.setenv("A2A_API_KEY", "secret-key")
+    client = TestClient(_build_test_agent(lambda task, store: task))
+    payload = {"jsonrpc": "2.0", "id": "k3", "method": "SendStreamingMessage", "params": {"message": _msg("k3", "hi")}}
+
+    denied = client.post("/rpc/stream", json=payload)
+    assert denied.status_code == 401, denied.text
+
+    allowed = client.post("/rpc/stream", json=payload, headers={"X-API-Key": "secret-key"})
+    assert allowed.status_code == 200, allowed.text
+
+    card = client.get("/.well-known/agent-card.json").json()
+    assert card.get("securitySchemes", {}).get("apiKey", {}).get("name") == "X-API-Key"
+    assert card.get("security") == [{"apiKey": []}]
+
+    monkeypatch.delenv("A2A_API_KEY", raising=False)
+    card_open = client.get("/.well-known/agent-card.json").json()
+    assert "securitySchemes" not in card_open
+
+
 if __name__ == "__main__":
     test_model_serialization()
     test_agent_card_canonical_path()

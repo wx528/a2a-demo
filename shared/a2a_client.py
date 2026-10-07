@@ -4,12 +4,19 @@ A2A JSON-RPC 2.0 客户端公共组件。
 """
 
 import json
+import os
 import uuid
 from typing import Any, Dict, List
 
 import httpx
 
 from .models import JSONRPCRequest, JSONRPCResponse
+
+
+def _auth_headers() -> Dict[str, str]:
+    """设置 A2A_API_KEY 时自动附带鉴权头（与 shared.a2a_server 的门禁配对）。"""
+    key = os.getenv("A2A_API_KEY", "").strip()
+    return {"Authorization": f"Bearer {key}"} if key else {}
 
 
 class A2AJSONRPCClient:
@@ -30,7 +37,7 @@ class A2AJSONRPCClient:
             resp = await client.post(
                 self.rpc_url,
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", **_auth_headers()},
             )
             resp.raise_for_status()
             rpc_resp = JSONRPCResponse.model_validate(resp.json())
@@ -52,7 +59,7 @@ class A2AJSONRPCClient:
             resp = await client.post(
                 self.rpc_url,
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", **_auth_headers()},
             )
             resp.raise_for_status()
             return resp.json()
@@ -79,7 +86,7 @@ class A2AJSONRPCClient:
                 "POST",
                 f"{self.agent_url}/rpc/stream",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", **_auth_headers()},
             ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():

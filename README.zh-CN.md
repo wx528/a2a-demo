@@ -341,6 +341,12 @@ ROLE_AGENT_URLS="ada=http://127.0.0.1:8011,turing=http://127.0.0.1:8012,linus=ht
 V2_DEMO_TURN_DELAY=0.6       # 演示节奏，每轮间隔秒数
 ```
 
+### 安全说明
+
+- **监听地址**：所有服务经 `BIND_HOST` 决定监听接口（本地裸跑默认 `127.0.0.1` 只听回环）；docker compose 已显式设置 `BIND_HOST=0.0.0.0`（容器端口映射需要）。`HOST` 变量只用于拼接 Agent Card 里的主机名。
+- **API Key**：设置 `A2A_API_KEY` 后，所有 agent 的 `/rpc`、`/rpc/stream` 与 orchestrator 的写操作（`/create-article`、`/direct/*`、`/agents/refresh`）都要求 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`，Agent Card 会同步声明鉴权方案；内部互调（web/orchestrator → agent）自动附带 key。仅回环演示时可留空。
+- **Web UI**（:8080）本身无鉴权（浏览器演示定位）——请部署在可信网络内。
+
 ### 前端（web/frontend）
 
 ```bash
