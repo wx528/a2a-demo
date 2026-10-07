@@ -15,7 +15,7 @@ import { TurnCard } from "@/components/v2/TurnCard"
 import { UserNoteCard } from "@/components/v2/UserNoteCard"
 import { useV2Stream } from "@/hooks/useV2Stream"
 import { useHashRoute } from "@/lib/router"
-import { roleMeta, STAGE_LABELS, STAGE_ORDER } from "@/lib/roles"
+import { roleMetaFromTask, STAGE_LABELS, STAGE_ORDER } from "@/lib/roles"
 import { endTask, resumeTask, retryTask, type V2TaskT } from "@/lib/v2api"
 import { cn } from "@/lib/utils"
 
@@ -220,7 +220,7 @@ export function WorkspacePage({ id }: { id: string }) {
       turn.kind === "user_note" || turn.kind === "decision_record" ? (
         <UserNoteCard key={turn.id} turn={turn} />
       ) : (
-        <TurnCard key={turn.id} turn={turn} highlight={highlighted} />
+        <TurnCard key={turn.id} turn={turn} task={task} highlight={highlighted} />
       ),
     )
   }
@@ -332,15 +332,16 @@ export function WorkspacePage({ id }: { id: string }) {
                 {thinkingAuthor && task.status === "running" ? (
                   <div
                     role="status"
-                    aria-label={`${roleMeta(thinkingAuthor).zh}正在思考`}
+                    aria-label={`${roleMetaFromTask(task, thinkingAuthor).zh}正在思考`}
                     className="flex items-center gap-3 py-1"
                   >
                     <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-panel text-[19px]">
-                      {roleMeta(thinkingAuthor).emoji}
+                      {roleMetaFromTask(task, thinkingAuthor).emoji}
                     </span>
                     <span className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
-                      {roleMeta(thinkingAuthor).zh} · {roleMeta(thinkingAuthor).en} 正在思考…
+                      {roleMetaFromTask(task, thinkingAuthor).zh} ·{" "}
+                      {roleMetaFromTask(task, thinkingAuthor).en} 正在思考…
                       <span className="flex items-center gap-1" aria-hidden>
                         <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
                         <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:150ms]" />

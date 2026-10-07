@@ -17,7 +17,7 @@ import { OutcomeOverview, pad } from "@/components/v2/OutcomeOverview"
 import { Shell } from "@/components/v2/Shell"
 import { ThemeToggle } from "@/components/v2/ThemeToggle"
 import { useHashRoute } from "@/lib/router"
-import { roleLabel, STAGE_LABELS } from "@/lib/roles"
+import { roleMetaFromTask, STAGE_LABELS } from "@/lib/roles"
 import {
   confirmOutcome,
   exportUrl,
@@ -638,6 +638,7 @@ export function OutcomePage({ id }: { id: string }) {
                   {evidence.map((item, index) => {
                     const seqRef = item.seq_ref ?? 0
                     const jumpable = seqRef > 0
+                    const authorMeta = roleMetaFromTask(task, item.author ?? "")
                     const row = (
                       <>
                         <span className="flex w-[166px] shrink-0 flex-col">
@@ -645,7 +646,7 @@ export function OutcomePage({ id }: { id: string }) {
                             #{pad(seqRef)} · {stageLabel(item.stage)}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {roleLabel(item.author ?? "")}
+                            {authorMeta.zh} · {authorMeta.en}
                           </span>
                         </span>
                         <span className="flex-1 text-sm text-secondary-foreground">

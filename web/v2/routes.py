@@ -446,6 +446,13 @@ _AUTHOR_LABELS = {
 _MODE_LABELS = {"pipeline": "流水线", "roundtable": "圆桌", "debate": "辩论"}
 
 
+def _author_label(task: V2Task, author: str) -> str:
+    expert = task.expert_by_id(author)
+    if expert is not None:
+        return expert.name
+    return _AUTHOR_LABELS.get(author, author)
+
+
 def _export_markdown(task: V2Task) -> str:
     mode_text = _MODE_LABELS.get(task.advanced_mode, task.advanced_mode)
     created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(task.created_at))
@@ -473,7 +480,7 @@ def _export_markdown(task: V2Task) -> str:
         lines += [f"### {STAGE_LABELS[stage]}"]
         lines.append("")
         for t in stage_turns:
-            label = _AUTHOR_LABELS.get(t.author, t.author)
+            label = _author_label(task, t.author)
             lines.append(f"**{label} · {t.author}** #{t.seq}")
             lines.append("")
             if t.title:

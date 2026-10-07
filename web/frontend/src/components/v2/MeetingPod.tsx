@@ -1,10 +1,16 @@
 import { useState } from "react"
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react"
 import type { V2StreamTaskT } from "@/hooks/useV2Stream"
-import { roleMeta } from "@/lib/roles"
+import { roleMetaFromTask } from "@/lib/roles"
 import { cn } from "@/lib/utils"
 
-const POD_ROLES = ["ada", "turing", "linus", "sage"] as const
+const PURPOSE_ORDER = ["research", "propose", "challenge", "synthesize"] as const
+const DEFAULT_POD_ROLES = ["ada", "turing", "linus", "sage"] as const
+
+function podRoles(task: V2StreamTaskT): string[] {
+  const ids = PURPOSE_ORDER.map((purpose) => task.assignments?.[purpose]).filter(Boolean)
+  return ids.length > 0 ? ids : [...DEFAULT_POD_ROLES]
+}
 
 type RoleStateT = "thinking" | "speaking" | "waiting" | "done" | "idle"
 
@@ -50,21 +56,27 @@ function podSummary(task: V2StreamTaskT, thinkingAuthor: string | null): string 
   if (task.status === "paused") return "讨论已暂停"
   if (task.status === "failed") return "讨论中断"
   if (task.status === "completed") return "讨论已完成"
-  if (thinkingAuthor) return `${roleMeta(thinkingAuthor).zh} 思考中…`
-  const speaking = POD_ROLES.find((role) => roleState(task, role, null) === "speaking")
-  if (speaking) return `${roleMeta(speaking).zh} 发言中`
+  if (thinkingAuthor) return `${roleMetaFromTask(task, thinkingAuthor).zh} 思考中…`
+  const speaking = podRoles(task).find((role) => roleState(task, role, null) === "speaking")
+  if (speaking) return `${roleMetaFromTask(task, speaking).zh} 发言中`
   return "讨论进行中"
+}
+
+function customExpertCount(task: V2StreamTaskT): number {
+  return (task.experts ?? []).filter((expert) => expert.source === "custom").length
 }
 
 function podHeader(task: V2StreamTaskT, thinkingAuthor: string | null): string {
   const base = "会议舱 · 4 个专业视角"
   if (task.demo) return `${base} · ${podSummary(task, thinkingAuthor)} · 演示 · 非实时`
-  const states = POD_ROLES.map((role) => task.connections?.[role])
+  const custom = customExpertCount(task)
+  const customText = custom > 0 ? ` · 含 ${custom} 位外部专家` : ""
+  const states = podRoles(task).map((role) => task.connections?.[role])
   if (states.some((state) => typeof state === "string" && state !== "demo")) {
     const up = states.filter((state) => state === "up").length
-    return `${base} · ${podSummary(task, thinkingAuthor)} · Agent 在线 ${up}/4`
+    return `${base} · ${podSummary(task, thinkingAuthor)}${customText} · Agent 在线 ${up}/4`
   }
-  return `${base} · ${podSummary(task, thinkingAuthor)}`
+  return `${base} · ${podSummary(task, thinkingAuthor)}${customText}`
 }
 
 export function MeetingPod({
@@ -99,8 +111,8 @@ export function MeetingPod({
       </div>
       {open ? (
         <div className="grid grid-cols-2 gap-3 p-4 pt-0 xl:grid-cols-4">
-          {POD_ROLES.map((role) => {
-            const meta = roleMeta(role)
+          {podRoles(task).map((role) => {
+            const meta = roleMetaFromTask(task, role)
             const state = roleState(task, role, thinkingAuthor)
             const stateMeta = ROLE_STATE_META[state]
             const connectionDown = task.connections?.[role] === "down"

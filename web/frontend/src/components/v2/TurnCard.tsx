@@ -1,9 +1,17 @@
-import type { V2TurnT } from "@/hooks/useV2Stream"
-import { roleMeta } from "@/lib/roles"
+import type { V2StreamTaskT, V2TurnT } from "@/hooks/useV2Stream"
+import { roleMetaFromTask } from "@/lib/roles"
 import { cn } from "@/lib/utils"
 
-export function TurnCard({ turn, highlight = false }: { turn: V2TurnT; highlight?: boolean }) {
-  const meta = roleMeta(turn.author)
+export function TurnCard({
+  turn,
+  task = null,
+  highlight = false,
+}: {
+  turn: V2TurnT
+  task?: V2StreamTaskT | null
+  highlight?: boolean
+}) {
+  const meta = roleMetaFromTask(task, turn.author)
   return (
     <article
       data-seq={turn.seq}
