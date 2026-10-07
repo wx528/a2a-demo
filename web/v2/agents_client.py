@@ -15,10 +15,10 @@ from web.v2.orchestrator import AgentCallError, _PURPOSE_BY_KEY
 from web.v2.util import ThinkFilter, _PHASE_LINE, _phase_or_none
 
 ROLE_AGENTS: dict[str, str] = {
-    "ada": "http://localhost:8011",
-    "turing": "http://localhost:8012",
-    "linus": "http://localhost:8013",
-    "sage": "http://localhost:8014",
+    "ada": "http://127.0.0.1:8011",
+    "turing": "http://127.0.0.1:8012",
+    "linus": "http://127.0.0.1:8013",
+    "sage": "http://127.0.0.1:8014",
 }
 
 ROLE_PERSONAS: dict[str, str] = {

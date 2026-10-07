@@ -44,12 +44,29 @@ class Expert(BaseModel):
     card_name: str = ""
 
 
-BUILTIN_EXPERTS: list[Expert] = [
-    Expert(id="ada", name="研究员 · Ada", url="http://role-ada:8011", tags=["研究"], emoji="🧬", source="builtin"),
-    Expert(id="turing", name="方案设计师 · Turing", url="http://role-turing:8012", tags=["设计", "方案"], emoji="🧠", source="builtin"),
-    Expert(id="linus", name="挑战者 · Linus", url="http://role-linus:8013", tags=["挑战"], emoji="⚡", source="builtin"),
-    Expert(id="sage", name="决策助手 · Sage", url="http://role-sage:8014", tags=["权衡"], emoji="⚖️", source="builtin"),
-]
+def _builtin_url(role: str, port: int) -> str:
+    """内置专家地址：优先 ROLE_AGENT_URLS env（compose 用容器名），本地回退 127.0.0.1。
+
+    与 agents_client.ROLE_AGENTS 保持同一 env 语义，避免注册表与实际可达地址漂移。
+    """
+    raw = os.getenv("ROLE_AGENT_URLS", "")
+    for pair in raw.split(","):
+        name, sep, url = pair.strip().partition("=")
+        if sep and name.strip() == role and url.strip():
+            return url.strip()
+    return f"http://127.0.0.1:{port}"
+
+
+def _builtin_experts() -> list[Expert]:
+    return [
+        Expert(id="ada", name="研究员 · Ada", url=_builtin_url("ada", 8011), tags=["研究"], emoji="🧬", source="builtin"),
+        Expert(id="turing", name="方案设计师 · Turing", url=_builtin_url("turing", 8012), tags=["设计", "方案"], emoji="🧠", source="builtin"),
+        Expert(id="linus", name="挑战者 · Linus", url=_builtin_url("linus", 8013), tags=["挑战"], emoji="⚡", source="builtin"),
+        Expert(id="sage", name="决策助手 · Sage", url=_builtin_url("sage", 8014), tags=["权衡"], emoji="⚖️", source="builtin"),
+    ]
+
+
+BUILTIN_EXPERTS: list[Expert] = _builtin_experts()
 
 
 class V2ExpertStore:
