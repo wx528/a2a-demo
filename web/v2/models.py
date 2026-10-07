@@ -105,6 +105,15 @@ class OutcomeDoc(BaseModel):
     label: Literal["draft", "ai_suggestion", "team_confirmed"] = "ai_suggestion"
 
 
+class TaskExpert(BaseModel):
+    id: str
+    name: str
+    url: str
+    purpose: Literal["research", "propose", "challenge", "synthesize"]
+    emoji: str = "🔌"
+    source: Literal["builtin", "custom"] = "custom"
+
+
 class V2Task(BaseModel):
     id: str
     goal_type: Literal["decision"] = "decision"
@@ -114,6 +123,8 @@ class V2Task(BaseModel):
     materials: list[Material] = Field(default_factory=list)
     advanced_mode: Literal["pipeline", "roundtable", "debate"] = "pipeline"
     advanced_rounds: int = 2
+    experts: list[TaskExpert] = Field(default_factory=list)
+    assignments: dict[str, str] = Field(default_factory=dict)
     status: TaskStatus = "preparing"
     current_stage: Stage = "clarify"
     stage_index: int = 0
@@ -127,6 +138,9 @@ class V2Task(BaseModel):
 
     def next_seq(self) -> int:
         return max((t.seq for t in self.turns), default=0) + 1
+
+    def expert_by_id(self, expert_id: str) -> TaskExpert | None:
+        return next((e for e in self.experts if e.id == expert_id), None)
 
     def public_dict(self) -> dict:
         data = self.model_dump()
