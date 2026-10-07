@@ -10,7 +10,8 @@ A minimal runnable **A2A (Agent-to-Agent)** example, including:
 - `research-agent`: research agent, takes a topic and returns a summary
 - `writing-agent`: writing agent, turns a summary into a Markdown article
 - `orchestrator`: orchestrator chaining research → writing with dynamic agent discovery
-- `web`: meeting room demo (FastAPI + React + SSE) visualizing agent collaboration
+- `role-agent` (×4 containers): decision role agents — researcher Ada, designer Turing, challenger Linus, synthesizer Sage
+- `web`: **decision workspace** (FastAPI + React + SSE) — give it a goal, four experts discuss through defined purposes (research → propose → challenge → synthesize), you step in at key decision gates, and you get a structured outcome
 
 All agents expose the A2A protocol over **JSON-RPC 2.0** (aligned with the [A2A v1.0 specification](https://a2a-protocol.org/latest/specification/)):
 
@@ -18,13 +19,29 @@ All agents expose the A2A protocol over **JSON-RPC 2.0** (aligned with the [A2A 
 - `POST /rpc`: JSON-RPC entry point — `SendMessage`, `GetTask`, `CancelTask`, `ListTasks` (legacy names like `tasks/send` kept as aliases)
 - `POST /rpc/stream`: SSE streaming entry point — `SendStreamingMessage`, `SubscribeToTask`
 
-## Meeting Room Preview
+## Decision Workspace Preview
 
-| Debate room (dark) | Home (dark) |
+| Workspace (dark) | Home (light) |
 |---|---|
-| ![Debate room](docs/images/room-dark.png) | ![Home](docs/images/home-dark.png) |
+| ![Workspace](docs/images/v2-workspace-dark.png) | ![Home](docs/images/v2-home.png) |
 
-Agents stream token-by-token with visible work phases (search → draft → critique → final), the right rail shows real round progress and session telemetry, and every meeting can be exported as Markdown.
+| Plan — purpose slots | Expert registry | Outcome |
+|---|---|---|
+| ![Plan](docs/images/v2-plan.png) | ![Experts](docs/images/v2-experts.png) | ![Outcome](docs/images/v2-outcome.png) |
+
+The web UI is a goal-driven **decision workspace**, not a chat window:
+
+1. **State a goal** (a judgment to make, expected outcome, constraints, materials)
+2. **Confirm the plan** — four purpose slots (research / propose / challenge / synthesize) each assigned to an expert; reassign freely from the registry
+3. **Watch the discussion** — turns stream token-by-token, organized by stage (clarify → compare → review → recommend), with a live outcome draft on the right
+4. **Step in at the decision gate** — when the key trade-off is reached the room pauses for you (adopt / adjust / not sure); your answer steers the revision
+5. **Get a structured outcome** — recommendation with confirmed constraints, open questions, and per-turn evidence citations; edit, copy or export as Markdown
+
+**Expert registry**: the four builtin experts are A2A agents (one shared codebase, four containers). Register your **own external A2A agent** (e.g. one with its own memory or toolset) — it gets seated into a purpose slot and receives only the purpose instruction plus discussion context, never a builtin persona.
+
+**Demo mode**: without an `LLM_API_KEY` the workspace runs on deterministic builtin scripts (assignments are pinned to builtin experts), so the full flow is demoable offline.
+
+> V1 meeting room API (`/api/meetings/...`) is still served for compatibility; the UI now focuses on the V2 workspace (`/api/v2/...`).
 
 > Updated 2026-09: data model, method names, enums, error format and timestamp precision are aligned with the current v1.0.0 spec (PascalCase methods, `TASK_STATE_*` / `ROLE_*` enums, `google.rpc.ErrorInfo` errors, millisecond timestamps). Task failures fall through to `TASK_STATE_FAILED`; multi-turn conversations are supported: messages with `taskId` continue an existing task, messages with `contextId` create a new task seeded with the context history. Real token-level streaming and SQLite task persistence are built in.
 
@@ -56,14 +73,18 @@ Agents stream token-by-token with visible work phases (search → draft → crit
 ├── debate/                 # Persona debate CLI orchestrator
 │   ├── personas.py         # Persona library (socrates / hume / kant / ...)
 │   └── run_debate.py       # Multi-round debate + judge verdict
+├── role_agent/               # Decision role agent (one codebase, four via ROLE env)
+│   ├── main.py               # ROLE=ada|turing|linus|sage picks the persona
+│   └── Dockerfile
 ├── evals/                  # Conformance suite + debate quality evals
 │   ├── conformance/        # A2A spec-compliance checks (offline)
 │   ├── quality/            # Motion set, metrics, LLM-as-judge, runner
 │   └── README.md           # Evaluation guide (two tiers)
-├── web/                    # Meeting room web demo
-│   ├── main.py
-│   ├── db.py               # SQLite persistence for meetings
-│   ├── frontend/          # Vite + React + shadcn/ui (built to dist/)
+├── web/                    # Decision workspace web demo
+│   ├── main.py             # FastAPI app (V1 meetings API + V2 workspace API + SPA)
+│   ├── v2/                 # V2 core: models / store / orchestrator / agents_client / experts / demo
+│   ├── db.py               # SQLite persistence for V1 meetings
+│   ├── frontend/           # Vite + React (V2 workspace UI, built to dist/)
 │   └── Dockerfile
 ├── .github/workflows/      # CI + LLM smoke tests
 ├── docker-compose.yml
@@ -139,9 +160,11 @@ docker compose up --build
 ```
 
 Once running:
+- Web decision workspace: http://localhost:8080
 - Orchestrator: http://localhost:8000
 - Research Agent: http://localhost:8001
 - Writing Agent: http://localhost:8002
+- Role agents (ada / turing / linus / sage): http://localhost:8011 - 8014
 
 ### 2. Test the Agent Card
 
@@ -263,7 +286,8 @@ auto-load it on local runs; explicitly exported variables take precedence.
 |-------|------|-------|
 | Unit | `test_a2a.py` / `test_registry.py` / `test_task_store.py` | Protocol behavior, registry, persistence — no services needed |
 | End-to-end | `test_e2e.py` | Real processes, agent + orchestrator workflow |
-| Web integration | `test_web.py` | Meeting room SSE full chain |
+| Workspace (V2) | `test_v2_*.py` / `test_experts_*.py` / `test_role_agent.py` / `test_think_filter.py` | Orchestrator state machine, decision gate, expert registry, demo scripts, role agent |
+| Web integration (V1) | `test_web.py` / `test_web_turns.py` / `test_web_scheduler.py` | Meeting room SSE full chain |
 | LLM smoke | `test_llm_smoke.py` | Real LLM (DeepSeek by default); auto-skips without a key |
 
 CI (GitHub Actions):
@@ -272,9 +296,7 @@ CI (GitHub Actions):
 
 ---
 
-## Web Meeting Room Demo
-
-The project includes a visual meeting room to watch agents collaborate.
+## Decision Workspace Demo (Web)
 
 ### Start
 
@@ -291,22 +313,37 @@ Visit: http://localhost:8080
 
 ### Flow
 
-1. Enter a meeting topic (e.g. `Kubernetes`, `A2A protocol`) and pick a mode: pipeline / roundtable / **debate** (persona dropdowns for both sides, 1-3 rounds)
-2. Create the meeting room
-3. **Step mode is the default**: the room pauses before every agent turn — click "▶ 继续" to advance, or type into the input box first (in debates this becomes an audience inquiry the next speaker must address) and it auto-continues on send
-4. One-click "⏩ 自动连播" (auto-play, the old continuous behavior) / "⏸ 切换为步进" at any time
-5. In debate mode the judge verdict renders as a distinct card; citation links are clickable
+1. Pick a goal card (research / compare / review / **decide**) and describe the judgment to make, plus expected outcome, constraints and materials
+2. Confirm the plan: four purpose slots — research, propose, challenge, synthesize — each seated with an expert; open **专家库 (Expert Registry)** to enable/disable experts or register your own A2A agent, and reassign any slot
+3. Start the collaboration: turns stream live, grouped by stage (clarify → compare → review → recommend); the meeting pod shows each expert's state (thinking / speaking / waiting)
+4. At the **decision gate** the room pauses for you: adopt, adjust, or mark key uncertainty — the discussion continues from your answer
+5. When done, the **outcome page** renders the recommendation: confirmed constraints, divergences, items to verify, evidence links back to the exact turns; edit / copy / export as Markdown
+
+### Expert Registry (guest experts)
+
+- Four builtin experts (Ada / Turing / Linus / Sage) are A2A agents — one shared codebase, four containers on ports 8011-8014
+- Register an **external A2A agent** by URL (a reachability probe runs on save); tag it with what it is good at and it will be suggested for matching purpose slots
+- Guest experts receive only the purpose instruction + goal/constraints + recent discussion — **no builtin persona is injected**, so their own memory/style remains intact
+- Assignments are frozen into the task when the discussion starts (snapshot semantics); registry changes never retroactively alter running or finished tasks
+- Deleting builtin experts is not allowed (disable instead); demo tasks always use builtin scripts
 
 ### Implementation
 
-- **Backend**: FastAPI + SSE; turn-driven API (`POST /api/meetings/{id}/turns/next` executes exactly one turn and ends with `turn_done`) — step and auto share the same endpoint
-- **Frontend**: Vite + React + Tailwind CSS + shadcn/ui, built to `web/frontend/dist` and served by FastAPI; turn SSE parsed via fetch streaming
-- **A2A calls**: agent turns go through `POST /rpc` `SendMessage`; debate mode talks to `debate-agent` (`DEBATE_AGENT_URL`)
-- **Live status**: agents show "thinking", "speaking", "waiting" states
+- **Backend**: FastAPI + SSE; in-process orchestrator (`web/v2/orchestrator.py`) drives the auto-advancing loop, decision gates, interventions and retries; six task states (`preparing / running / waiting_confirmation / paused / completed / failed`) with crash-safe resume
+- **Agent calls**: every turn is an A2A JSON-RPC streaming call (`SendStreamingMessage`) to the seated expert's agent; a stateful think-filter hides reasoning tokens but keeps `# UNVERIFIED` self-doubt markers
+- **Frontend**: Vite + React + Tailwind, hash-based mini router (`#/`, `#/plan`, `#/task/:id`, `#/task/:id/outcome`), light/dark themes, Noto Sans SC + JetBrains Mono
+- **Persistence**: SQLite (`V2_DB`, default `data/v2_tasks.db`)
+
+### Workspace env vars
+
+```bash
+V2_DEMO=1                    # force demo mode (auto-on when no LLM_API_KEY)
+V2_DB=data/v2_tasks.db       # task persistence path
+ROLE_AGENT_URLS="ada=http://127.0.0.1:8011,turing=http://127.0.0.1:8012,linus=http://127.0.0.1:8013,sage=http://127.0.0.1:8014"
+V2_DEMO_TURN_DELAY=0.6       # demo pacing, seconds per turn
+```
 
 ### Frontend (web/frontend)
-
-The web UI is built with Vite + React + Tailwind + shadcn/ui and served by FastAPI.
 
 ```bash
 # Dev mode (start the backend first: uv run python web/main.py)

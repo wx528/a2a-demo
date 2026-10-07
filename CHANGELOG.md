@@ -9,6 +9,23 @@
 
 ### Added
 
+- **决策工作台（V2，现为默认 Web UI）**：目标驱动的多人协作决策流——提出目标（判断/期望成果/约束/材料）→ 确认计划 → 四阶段讨论（澄清 → 比较 → 评审 → 建议）→ 决策门介入 → 结构化成果页（建议、已确认约束、分歧、待验证项、逐条发言出处引用，可编辑/复制/导出 Markdown）；六状态机（`preparing/running/waiting_confirmation/paused/completed/failed`）支持崩溃恢复与重试；浅色/深色双主题（Noto Sans SC + JetBrains Mono）
+- **专家库与外部专家席位（Guest Experts）**：四位内置专家（研究员 Ada / 方案设计师 Turing / 挑战者 Linus / 决策助手 Sage，A2A agent，同一份代码 × 4 容器，端口 8011-8014）；可按 URL 注册外部 A2A agent（保存时探活、擅长标签自动匹配功能槽）、启停与改派；外部专家只收「职能指令 + 目标约束 + 近期讨论」，不注入内置人设；指派在讨论开始时固化为任务快照，注册表变更不追溯影响已有任务；内置专家可禁用不可删除；演示任务强制内置指派
+- **功能槽（Purpose Slots）**：研究 / 方案 / 挑战 / 权衡四个职能槽与专家身份正交——任何专家可坐任何槽，计划页按标签自动匹配并推荐，支持手动改派
+- **决策门**：讨论到关键取舍时自动暂停（`waiting_confirmation`），用户可选采纳 / 调整 / 暂不确定；「暂不确定」会先补一轮比较再重新征求确认；确认后由方案设计师修订、决策助手整理成果
+- **演示模式**：无 `LLM_API_KEY` 时自动启用，内置确定性脚本跑通完整流程（指派固定内置专家、发言走脚本、成果由讨论派生），`V2_DEMO=1` 强制开启，`V2_DEMO_TURN_DELAY` 控制节奏
+- **思考中指示器**：`turn_start` 事件驱动——会议舱专家卡与讨论区尾部实时显示「思考中…」，发言到达后切换
+- **role-agent 服务**：`role_agent/` 一份代码四个角色（env `ROLE=ada|turing|linus|sage`），A2A JSON-RPC 流式接口 + Agent Card；web 通过 `ROLE_AGENT_URLS`（`name=url` 逗号分隔）发现
+- 有状态 think 过滤器：跨增量截断的多段 `<think>` 全部隐藏，`# UNVERIFIED` 自疑标记保留渲染（`web/v2/util.py`，V1/V2 共用）
+- 工作台测试：编排器状态机 / 决策门 / 专家库 / 演示脚本 / 角色 agent / think 过滤器等 90+ 项离线用例（`test_v2_*.py`、`test_experts_*.py`、`test_role_agent.py`、`test_think_filter.py`）
+- README 双语重写为决策工作台（含新截图 `docs/images/v2-*.png`：工作台/首页/计划页/专家库/成果页，浅深色）
+
+### Changed
+
+- Web 前端整体替换为 V2 决策工作台（hash 路由 `#/`、`#/plan`、`#/task/:id`、`#/task/:id/outcome`）；V1 会议室 API（`/api/meetings/...`）保留兼容但不再提供 UI
+- docker compose 新增 4 个角色 agent 容器（8011-8014）；web 编排内置化（`web/v2/` 包），角色发言经 A2A JSON-RPC 流式调用
+- 内置专家地址从 `ROLE_AGENT_URLS` env 派生（compose 用容器名、本地回退 127.0.0.1），专家注册表与实际可达地址保持同源
+
 - Web 会议室**步进模式（默认）**：逐轮驱动 API（`POST /turns/next` 一次执行一轮，`turn_done` 收尾），发言前暂停可插入用户发言（辩论中成为观众质询），一键切换自动连播；`GET /next-turn` 预览下一位，`GET /api/personas` 人格列表
 - Web 会议室**辩论模式**：正/反方人格下拉（苏格拉底/休谟/康德/尼采/怀疑论工程师/风险投资人）+ 1-3 轮 + 裁判总结卡片，引用可点击；接 `debate-agent`（`DEBATE_AGENT_URL`）
 - debate-agent 输入契约新增可选 `[观众质询/INQUIRY]` 段

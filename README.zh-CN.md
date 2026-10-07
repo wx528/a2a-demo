@@ -10,20 +10,37 @@
 - `research-agent`：研究型 agent，接收主题返回摘要
 - `writing-agent`：写作型 agent，基于摘要生成 Markdown 文章
 - `orchestrator`：编排器，动态发现 agent 并串联 research → writing
-- `web`：会议室演示（FastAPI + React + SSE），可视化 agent 协作过程
+- `role-agent`（×4 容器）：决策角色 agent——研究员 Ada、方案设计师 Turing、挑战者 Linus、决策助手 Sage
+- `web`：**决策工作台**（FastAPI + React + SSE）——给它一个目标，四位专家按职能（研究 → 方案 → 挑战 → 权衡）展开讨论，你在关键决策节点介入，最终得到结构化成果
 
 所有 agent 都通过 **JSON-RPC 2.0** 暴露 A2A 协议接口（对齐 [A2A v1.0 规范](https://a2a-protocol.org/latest/specification/)）：
 - `GET /.well-known/agent-card.json`：Agent Card（发现，旧路径 `agent.json` 保留为兼容别名）
 - `POST /rpc`：JSON-RPC 入口，支持 `SendMessage`、`GetTask`、`CancelTask`、`ListTasks`（旧名 `tasks/send` 等保留为兼容别名）
 - `POST /rpc/stream`：SSE 流式入口，支持 `SendStreamingMessage`、`SubscribeToTask`
 
-## 会议室预览
+## 决策工作台预览
 
-| 辩论会议室（暗色） | 首页（暗色） |
+| 工作台（暗色） | 首页（浅色） |
 |---|---|
-| ![辩论会议室](docs/images/room-dark.png) | ![首页](docs/images/home-dark.png) |
+| ![工作台](docs/images/v2-workspace-dark.png) | ![首页](docs/images/v2-home.png) |
 
-Agent 发言逐 token 流式输出，工作阶段（检索 → 起草 → 自审 → 定稿）实时可见；右栏展示真实轮次进度与会话遥测；每场会议可一键导出 Markdown。
+| 计划页 · 功能槽 | 专家库 | 决策成果 |
+|---|---|---|
+| ![计划页](docs/images/v2-plan.png) | ![专家库](docs/images/v2-experts.png) | ![成果](docs/images/v2-outcome.png) |
+
+Web UI 是一个目标驱动的**决策工作台**，不是聊天窗口：
+
+1. **提出目标**（要做的判断、期望成果、上下文约束、参考材料）
+2. **确认计划**——四个功能槽（研究 / 方案 / 挑战 / 权衡）各坐一位专家，可从专家库自由改派
+3. **围观讨论**——发言逐 token 流式输出，按阶段组织（澄清 → 比较 → 评审 → 建议），右侧成果草稿实时更新
+4. **决策节点介入**——讨论到关键取舍时全场暂停等你拍板（采纳 / 调整 / 暂不确定），你的回答决定后续修订方向
+5. **获得结构化成果**——建议 + 已确认约束 + 分歧 + 待验证项 + 逐条发言出处引用，可编辑、复制、导出 Markdown
+
+**专家库**：四位内置专家本身就是 A2A agent（同一份代码、四个容器）。你也可以注册**自己的外部 A2A agent**（比如带自有记忆或工具集的）——它被坐进功能槽后只收到「职能指令 + 目标约束 + 近期讨论」，**不会注入内置人设**。
+
+**演示模式**：不配 `LLM_API_KEY` 时工作台跑内置确定性脚本（指派固定为内置专家），完整流程可离线演示。
+
+> V1 会议室 API（`/api/meetings/...`）仍保留兼容；UI 已聚焦 V2 工作台（`/api/v2/...`）。
 
 > 2026-09 更新：数据模型、方法名、枚举值、错误格式与时间戳精度已对齐现行 v1.0.0 规范（PascalCase 方法名、`TASK_STATE_*` / `ROLE_*` 枚举、`google.rpc.ErrorInfo` 错误、毫秒时间戳）。任务失败自动落 `TASK_STATE_FAILED`；支持多轮会话：消息带 `taskId` 续聊既有任务，带 `contextId` 新建任务并继承上下文历史。内置真流式输出与 SQLite 任务持久化。
 
@@ -55,14 +72,18 @@ Agent 发言逐 token 流式输出，工作阶段（检索 → 起草 → 自审
 ├── debate/                 # 辩论 Demo CLI 编排器
 │   ├── personas.py         # 人格库（苏格拉底 / 休谟 / 康德 ……）
 │   └── run_debate.py       # 多轮对抗辩论 + 裁判判定
+├── role_agent/               # 决策角色 agent（一份代码，ROLE env 区分四角色）
+│   ├── main.py               # ROLE=ada|turing|linus|sage 决定人格
+│   └── Dockerfile
 ├── evals/                  # 一致性套件 + 辩论质量评测
 │   ├── conformance/        # A2A 协议合规检查（离线）
 │   ├── quality/            # 辩题集、指标、LLM-as-judge、评测 runner
 │   └── README.md           # 评测指南（两个层级）
-├── web/                    # 会议室 Web 演示
-│   ├── main.py
-│   ├── db.py               # 会议 SQLite 持久化
-│   ├── frontend/          # Vite + React + shadcn/ui（构建产物 dist/）
+├── web/                    # 决策工作台 Web 演示
+│   ├── main.py             # FastAPI 应用（V1 会议 API + V2 工作台 API + SPA）
+│   ├── v2/                 # V2 核心：models / store / orchestrator / agents_client / experts / demo
+│   ├── db.py               # V1 会议 SQLite 持久化
+│   ├── frontend/           # Vite + React（V2 工作台 UI，构建产物 dist/）
 │   └── Dockerfile
 ├── .github/workflows/      # CI + LLM 冒烟测试
 ├── docker-compose.yml
@@ -138,9 +159,11 @@ docker compose up --build
 ```
 
 启动后：
+- Web 决策工作台：http://localhost:8080
 - Orchestrator: http://localhost:8000
 - Research Agent: http://localhost:8001
 - Writing Agent: http://localhost:8002
+- 角色 agent（ada / turing / linus / sage）：http://localhost:8011 - 8014
 
 ### 2. 测试 Agent Card
 
@@ -261,7 +284,8 @@ export LLM_MODEL="gpt-4o-mini"
 |------|------|------|
 | 单元测试 | `test_a2a.py` / `test_registry.py` / `test_task_store.py` | 协议行为、注册表、持久化，无需起服务 |
 | 端到端 | `test_e2e.py` | 起真实进程验证 agent + orchestrator 工作流 |
-| Web 集成 | `test_web.py` | 会议室 SSE 全链路 |
+| 工作台（V2） | `test_v2_*.py` / `test_experts_*.py` / `test_role_agent.py` / `test_think_filter.py` | 编排器状态机、决策门、专家库、演示脚本、角色 agent |
+| Web 集成（V1） | `test_web.py` / `test_web_turns.py` / `test_web_scheduler.py` | 会议室 SSE 全链路 |
 | LLM 冒烟 | `test_llm_smoke.py` | 真实 LLM 链路（默认 DeepSeek），无 key 自动跳过 |
 
 CI（GitHub Actions）：
@@ -270,9 +294,7 @@ CI（GitHub Actions）：
 
 ---
 
-## Web 会议室演示
-
-项目包含一个可视化会议室界面，可以直观看到多个 Agent 的协作过程。
+## 决策工作台演示（Web）
 
 ### 启动
 
@@ -289,22 +311,37 @@ docker compose up -d
 
 ### 使用流程
 
-1. 输入会议主题（例如：`Kubernetes`、`A2A protocol`），选择模式：流水线 / 圆桌 / **辩论**（人格下拉选正反方，1-3 轮）
-2. 创建会议室
-3. **默认步进模式**：每个 Agent 发言前暂停，点「▶ 继续」推进；也可随时在输入框插入发言（辩论中成为观众质询），发送后自动继续
-4. 一键切换「⏩ 自动连播」（等价旧行为）或「⏸ 切换为步进」
-5. 辩论模式的裁判总结以独立卡片渲染，引用链接可点击
+1. 选一张目标卡（研究 / 比较 / 评审 / **决策**），写下要做的判断、期望成果、上下文约束与材料
+2. 确认计划：四个功能槽——研究、方案、挑战、权衡——各坐一位专家；打开**专家库**启停专家或注册你自己的 A2A agent，也可对任意槽改派
+3. 开始协作：发言实时流式输出，按阶段分组（澄清 → 比较 → 评审 → 建议）；会议舱实时显示每位专家状态（思考中 / 发言中 / 等待中）
+4. 走到**决策门**时全场暂停：采纳、调整或标记关键不确定——讨论从你的回答继续
+5. 结束后进入**成果页**：建议 + 已确认约束 + 分歧 + 待验证项 + 关联回具体发言的出处链接；可编辑 / 复制 / 导出 Markdown
+
+### 专家库（外部专家席位）
+
+- 四位内置专家（Ada / Turing / Linus / Sage）本身就是 A2A agent——同一份代码、四个容器，端口 8011-8014
+- 按 URL 注册**外部 A2A agent**（保存时自动探活）；打上擅长标签后会在匹配的功能槽中被推荐
+- 外部专家只收到「职能指令 + 目标/约束 + 近期讨论」——**不注入内置人设**，其自有记忆与风格保持原样
+- 讨论开始时指派固化为任务快照（snapshot 语义）；专家库的后续变更绝不追溯影响进行中或已完成任务
+- 内置专家不可删除（可禁用）；演示任务永远使用内置脚本
 
 ### 技术实现
 
-- **后端**：FastAPI + SSE；逐轮驱动 API（`POST /api/meetings/{id}/turns/next` 一次执行一轮并以 `turn_done` 收尾），自动/步进共用同一接口
-- **前端**：Vite + React + Tailwind CSS + shadcn/ui，构建产物 `web/frontend/dist` 由 FastAPI 托管；turn SSE 用 fetch 流式解析
-- **A2A 调用**：Agent 发言通过 `POST /rpc` 发送 `SendMessage` 给对应 agent；辩论模式接 `debate-agent`（`DEBATE_AGENT_URL`）
-- **实时状态**：Agent 会显示"思考中"、"发言中"、"等待中"等状态
+- **后端**：FastAPI + SSE；进程内编排器（`web/v2/orchestrator.py`）驱动自动推进循环、决策门、插话与重试；六状态机（`preparing / running / waiting_confirmation / paused / completed / failed`）支持崩溃后恢复
+- **Agent 调用**：每轮发言都是对就座专家 agent 的 A2A JSON-RPC 流式调用（`SendStreamingMessage`）；有状态 think 过滤器隐藏思考 token，但保留 `# UNVERIFIED` 自疑标记
+- **前端**：Vite + React + Tailwind，hash 迷你路由（`#/`、`#/plan`、`#/task/:id`、`#/task/:id/outcome`），浅色/深色主题，Noto Sans SC + JetBrains Mono
+- **持久化**：SQLite（`V2_DB`，默认 `data/v2_tasks.db`）
+
+### 工作台环境变量
+
+```bash
+V2_DEMO=1                    # 强制演示模式（无 LLM_API_KEY 时自动开启）
+V2_DB=data/v2_tasks.db       # 任务持久化路径
+ROLE_AGENT_URLS="ada=http://127.0.0.1:8011,turing=http://127.0.0.1:8012,linus=http://127.0.0.1:8013,sage=http://127.0.0.1:8014"
+V2_DEMO_TURN_DELAY=0.6       # 演示节奏，每轮间隔秒数
+```
 
 ### 前端（web/frontend）
-
-Web UI 使用 Vite + React + Tailwind + shadcn/ui 构建，产物由 FastAPI 托管。
 
 ```bash
 # 开发模式（需先启动后端 uv run python web/main.py）
