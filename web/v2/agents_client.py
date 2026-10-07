@@ -99,10 +99,11 @@ class AgentSpeakerBackend:
         self.broadcaster = broadcaster
 
     async def speak(self, task: V2Task, author: str, key: str) -> tuple[str, str, bool]:
-        try:
-            url = ROLE_AGENTS[author]
-        except KeyError as exc:
-            raise AgentCallError(f"未知角色，无对应 Agent 地址：{author}") from exc
+        # guest 专家的地址在任务快照里；内置四角色回退静态映射（旧任务兼容）
+        expert = task.expert_by_id(author)
+        url = expert.url if expert else ROLE_AGENTS.get(author)
+        if not url:
+            raise AgentCallError(f"未知角色，无对应 Agent 地址：{author}")
         prompt = build_turn_prompt(task, author, key)
         try:
             text = await self._stream_text(task, author, url, prompt)

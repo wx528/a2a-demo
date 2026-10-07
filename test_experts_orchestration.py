@@ -37,6 +37,32 @@ def test_builtin_prompt_keeps_persona():
 
 
 @pytest.mark.asyncio
+async def test_backend_uses_snapshot_url_for_guest(monkeypatch):
+    from web.v2.agents_client import AgentSpeakerBackend
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, url):
+            captured["url"] = url
+
+        async def stream_deltas(self, text):
+            yield "标题行"
+            yield "\n正文内容"
+
+    monkeypatch.setattr("web.v2.agents_client.A2AJSONRPCClient", FakeClient)
+    be = AgentSpeakerBackend(NullBroadcasterStub())
+    title, body, verified = await be.speak(_task_with_guest(), "h1", "review_linus")
+    assert captured["url"] == "http://x:9"
+    assert title == "标题行" and body == "正文内容"
+
+
+class NullBroadcasterStub:
+    def publish(self, *args, **kwargs):
+        pass
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_uses_assignment(tmp_path):
     from web.v2.orchestrator import Orchestrator, NullBroadcaster
     from web.v2.store import V2Store
