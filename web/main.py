@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
 import generators
 import turns
-from web.v2.routes import router as v2_router, store as v2_store
+from web.v2.routes import router as v2_router, store as v2_store, _EXPERT_STORE
 from web.v2.util import ThinkFilter as _ThinkFilter, _PHASE_LINE, _phase_or_none, sse_event
 
 
@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
         if meeting:
             meetings[meeting["id"]] = Meeting(**meeting)
     v2_store.init()
+    _EXPERT_STORE.init()
     yield
 
 

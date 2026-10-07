@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from web.v2 import demo
 from web.v2.agents_client import ROLE_AGENTS, AgentSpeakerBackend, reload_urls
 from web.v2.broadcaster import Broadcaster
+from web.v2.experts import Expert, V2ExpertStore
 from web.v2.models import (
     STAGES,
     STAGE_LABELS,
@@ -70,6 +71,8 @@ class DemoOrRealBackend:
 
 store = V2Store(os.getenv("V2_DB", DEFAULT_DB))
 store.init()  # TestClient 用例不触发 lifespan，表结构须在导入时就绪
+_EXPERT_STORE = V2ExpertStore(os.getenv("V2_DB", DEFAULT_DB))
+_EXPERT_STORE.init()
 broadcaster = Broadcaster()
 backend = DemoOrRealBackend(broadcaster)
 orchestrator = Orchestrator(store, backend, broadcaster)
@@ -133,6 +136,57 @@ class OutcomePatchRequest(BaseModel):
     acceptance: Optional[list[AcceptanceItem]] = None
 
 
+class CreateExpertRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    url: str
+    tags: list[str] = Field(default_factory=list, max_length=8)
+    emoji: str = "🔌"
+
+    @field_validator("tags")
+    @classmethod
+    def _tags_limit(cls, value: list[str]) -> list[str]:
+        cleaned = [tag.strip() for tag in value if tag.strip()]
+        for tag in cleaned:
+            if len(tag) > 12:
+                raise ValueError("单个标签不超过 12 字")
+        return cleaned
+
+    @field_validator("url")
+    @classmethod
+    def _url_scheme(cls, value: str) -> str:
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("地址必须以 http:// 或 https:// 开头")
+        return value
+
+
+class UpdateExpertRequest(BaseModel):
+    name: Optional[str] = None
+    url: Optional[str] = None
+    tags: Optional[list[str]] = Field(default=None, max_length=8)
+    emoji: Optional[str] = None
+    enabled: Optional[bool] = None
+
+    @field_validator("tags")
+    @classmethod
+    def _tags_limit(cls, value: Optional[list[str]]) -> Optional[list[str]]:
+        if value is None:
+            return value
+        cleaned = [tag.strip() for tag in value if tag.strip()]
+        for tag in cleaned:
+            if len(tag) > 12:
+                raise ValueError("单个标签不超过 12 字")
+        return cleaned
+
+    @field_validator("url")
+    @classmethod
+    def _url_scheme(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("地址必须以 http:// 或 https:// 开头")
+        return value
+
+
 # ============== 辅助 ==============
 
 
@@ -143,21 +197,30 @@ def _require_task(task_id: str) -> V2Task:
     return task
 
 
+def _probe_expert(url: str) -> tuple[bool, str]:
+    """探活单个 Agent：GET agent-card（2s 超时），返回 (是否可达, 失败原因)。"""
+    try:
+        resp = httpx.get(f"{url}{_PROBE_PATH}", trust_env=False, timeout=_PROBE_TIMEOUT)
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    return (True, "") if resp.status_code == 200 else (False, f"HTTP {resp.status_code}")
+
+
+async def _probe_label(url: str) -> str:
+    """线程池并发探活并映射为 up/down/unknown（探测函数自身已兜底异常）。"""
+    try:
+        ok, _reason = await asyncio.to_thread(_probe_expert, url)
+    except Exception:
+        return "unknown"
+    return "up" if ok else "down"
+
+
 async def _probe_connections(task: V2Task) -> dict[str, str]:
     """角色连接状态：demo 任务固定 demo；真实任务探测 agent-card（2s 超时）。"""
     if task.demo:
         return {role: "demo" for role in ROLE_AGENTS}
-    async with httpx.AsyncClient(trust_env=False, timeout=_PROBE_TIMEOUT) as client:
-
-        async def probe(url: str) -> str:
-            try:
-                resp = await client.get(f"{url}{_PROBE_PATH}")
-                return "up" if resp.status_code == 200 else "down"
-            except Exception:
-                return "down"
-
-        keys = list(ROLE_AGENTS)
-        states = await asyncio.gather(*(probe(ROLE_AGENTS[key]) for key in keys))
+    keys = list(ROLE_AGENTS)
+    states = await asyncio.gather(*(_probe_label(ROLE_AGENTS[key]) for key in keys))
     return dict(zip(keys, states))
 
 
@@ -458,3 +521,81 @@ async def export_task(task_id: str):
             )
         },
     )
+
+
+# ============== 专家路由 ==============
+
+
+def _fetch_card_name(url: str) -> str:
+    """从 agent-card 的 name 字段取展示名（≤40 字，解析失败不阻塞注册）。"""
+    try:
+        resp = httpx.get(f"{url}{_PROBE_PATH}", trust_env=False, timeout=_PROBE_TIMEOUT)
+        return str(resp.json().get("name") or "")[:40]
+    except Exception:
+        return ""
+
+
+def _expert_error_status(message: str) -> int:
+    """ValueError → 状态码：不可删除 → 409；不存在 → 404；其余（冲突/重复）→ 409。"""
+    if "不可删除" in message:
+        return 409
+    if "不存在" in message or "not found" in message.lower():
+        return 404
+    return 409
+
+
+@router.get("/experts")
+async def list_experts(enabled_only: bool = False):
+    experts = _EXPERT_STORE.list_experts(enabled_only)
+    states = await asyncio.gather(*(_probe_label(e.url) for e in experts))
+    return [{**e.model_dump(), "probe": state} for e, state in zip(experts, states)]
+
+
+@router.post("/experts")
+async def create_expert(req: CreateExpertRequest):
+    ok, reason = await asyncio.to_thread(_probe_expert, req.url)
+    if not ok:
+        raise HTTPException(status_code=422, detail=f"无法连通该地址：{reason}")
+    expert = Expert(
+        id=uuid.uuid4().hex[:8],
+        name=req.name,
+        url=req.url,
+        tags=req.tags,
+        emoji=req.emoji,
+        source="custom",
+        card_name=_fetch_card_name(req.url),
+    )
+    try:
+        _EXPERT_STORE.create_expert(expert)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_expert_error_status(str(exc)), detail=str(exc)
+        ) from exc
+    return {**expert.model_dump(), "probe": "up"}
+
+
+@router.patch("/experts/{expert_id}")
+async def update_expert(expert_id: str, req: UpdateExpertRequest):
+    fields = req.model_dump(exclude_none=True)
+    if "url" in fields:
+        ok, reason = await asyncio.to_thread(_probe_expert, fields["url"])
+        if not ok:
+            raise HTTPException(status_code=422, detail=f"无法连通该地址：{reason}")
+    try:
+        updated = _EXPERT_STORE.update_expert(expert_id, fields)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_expert_error_status(str(exc)), detail=str(exc)
+        ) from exc
+    return updated.model_dump()
+
+
+@router.delete("/experts/{expert_id}")
+async def delete_expert(expert_id: str):
+    try:
+        _EXPERT_STORE.delete_expert(expert_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_expert_error_status(str(exc)), detail=str(exc)
+        ) from exc
+    return {"deleted": expert_id}
