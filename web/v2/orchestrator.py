@@ -9,6 +9,7 @@ import time
 from typing import Protocol
 
 from web.v2 import demo
+from web.v2.experts import DEFAULT_ASSIGNMENTS
 from web.v2.models import (
     STAGES,
     Constraint,
@@ -46,15 +47,24 @@ STAGE_PLAN: list[tuple[Stage, list[str], str]] = [
     ("review", ["linus"], "评审风险"),
 ]
 
-_AUTHOR_BY_KEY: dict[str, str] = {
-    "clarify_ada": "ada",
-    "compare_turing": "turing",
-    "review_linus": "linus",
-    "uncertain_turing": "turing",
-    "uncertain_linus": "linus",
-    "revise_turing": "turing",
-    "recommend_sage": "sage",
+_PURPOSE_BY_KEY: dict[str, str] = {
+    "clarify_ada": "research",
+    "compare_turing": "propose",
+    "review_linus": "challenge",
+    "uncertain_turing": "propose",
+    "uncertain_linus": "challenge",
+    "revise_turing": "propose",
+    "recommend_sage": "synthesize",
 }
+
+
+def expert_for(task: V2Task, key: str) -> str:
+    """key→purpose→任务指派；无指派时回退默认映射，指派不在快照中再回退默认（确定性）。"""
+    purpose = _PURPOSE_BY_KEY[key]
+    author = task.assignments.get(purpose) or DEFAULT_ASSIGNMENTS[purpose]
+    if task.experts and task.expert_by_id(author) is None:
+        author = DEFAULT_ASSIGNMENTS[purpose]
+    return author
 
 _STAGE_BY_KEY: dict[str, Stage] = {
     "clarify_ada": "clarify",
@@ -119,7 +129,7 @@ class Orchestrator:
         return turn
 
     async def _speak(self, task: V2Task, key: str) -> Turn:
-        author = _AUTHOR_BY_KEY[key]
+        author = expert_for(task, key)
         # 发言生成可能耗时较长（LLM 思考期无增量）：先广播 turn_start，
         # 前端据此在会议舱与讨论区显示「思考中」动画，避免看起来像连接中断。
         self._publish(task.id, "turn_start", {"author": author, "key": key})

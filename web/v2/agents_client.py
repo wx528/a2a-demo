@@ -9,8 +9,9 @@ import asyncio
 import os
 
 from shared.a2a_client import A2AJSONRPCClient
+from web.v2.experts import PURPOSE_DUTIES
 from web.v2.models import V2Task
-from web.v2.orchestrator import AgentCallError
+from web.v2.orchestrator import AgentCallError, _PURPOSE_BY_KEY
 from web.v2.util import ThinkFilter, _PHASE_LINE, _phase_or_none
 
 ROLE_AGENTS: dict[str, str] = {
@@ -61,6 +62,19 @@ def _recent_turns(task: V2Task) -> list:
     return [t for t in task.turns if t.kind in _RECENT_TURN_KINDS][-_RECENT_TURNS:]
 
 
+def _identity_line(task: V2Task, author: str, key: str) -> str:
+    """身份段按出场快照分流：内置专家保留人设，特邀专家只按职责槽发言。"""
+    expert = task.expert_by_id(author)
+    source = expert.source if expert is not None else (
+        "builtin" if author in ROLE_PERSONAS else "custom"
+    )
+    if source == "builtin":
+        instruction = KEY_INSTRUCTIONS.get(key, _GENERIC_INSTRUCTION)
+        return f"你是{ROLE_PERSONAS[author]}。{instruction}"
+    duty = PURPOSE_DUTIES.get(_PURPOSE_BY_KEY.get(key, ""), "")
+    return f"你是特邀专家。以你的专业经验就本次会议当前阶段发言：{duty}。"
+
+
 def build_turn_prompt(task: V2Task, author: str, key: str) -> str:
     lines = [
         f"[目标] {task.goal_text}",
@@ -74,7 +88,7 @@ def build_turn_prompt(task: V2Task, author: str, key: str) -> str:
     for t in _recent_turns(task):
         lines.append(f"#{t.seq} {t.author}: {t.title} — {t.body[:_BODY_CLIP]}")
     lines.append("[你的任务]")
-    lines.append(f"你是{ROLE_PERSONAS[author]}。{KEY_INSTRUCTIONS.get(key, _GENERIC_INSTRUCTION)}")
+    lines.append(_identity_line(task, author, key))
     return "\n".join(lines)
 
 

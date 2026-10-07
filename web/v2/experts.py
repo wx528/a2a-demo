@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from web.v2.models import TaskExpert
+
 PURPOSES: list[str] = ["research", "propose", "challenge", "synthesize"]
 PURPOSE_LABELS: dict[str, str] = {
     "research": "研究",
@@ -147,3 +149,38 @@ class V2ExpertStore:
             conn.commit()
         finally:
             conn.close()
+
+
+def resolve_assignments(
+    requested: dict[str, str], store: V2ExpertStore
+) -> tuple[list[TaskExpert], dict[str, str]]:
+    """校验请求指派并固化出场快照（assignments + experts 一并返回）。
+
+    purpose 非法/专家不存在或被禁用 → 该槽回退默认映射；同一专家不可占两槽，
+    重复时保留先到槽位、后到槽位回退默认。快照含全部出场专家（按 PURPOSES 顺序去重），
+    内置默认一律取自 store（编辑过的 url/tags 随之生效）。
+    """
+    catalog = {e.id: e for e in store.list_experts()}
+    assignments: dict[str, str] = {}
+    used: set[str] = set()
+    for purpose in PURPOSES:
+        expert_id = requested.get(purpose) or ""
+        if expert_id not in catalog or not catalog[expert_id].enabled or expert_id in used:
+            expert_id = DEFAULT_ASSIGNMENTS[purpose]
+        used.add(expert_id)
+        assignments[purpose] = expert_id
+    snapshot: dict[str, TaskExpert] = {}
+    for purpose in PURPOSES:
+        expert = catalog[assignments[purpose]]
+        snapshot.setdefault(
+            expert.id,
+            TaskExpert(
+                id=expert.id,
+                name=expert.name,
+                url=expert.url,
+                emoji=expert.emoji,
+                purpose=purpose,
+                source=expert.source,
+            ),
+        )
+    return list(snapshot.values()), assignments

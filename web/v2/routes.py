@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from web.v2 import demo
 from web.v2.agents_client import ROLE_AGENTS, AgentSpeakerBackend, reload_urls
 from web.v2.broadcaster import Broadcaster
-from web.v2.experts import Expert, V2ExpertStore
+from web.v2.experts import Expert, V2ExpertStore, resolve_assignments
 from web.v2.models import (
     STAGES,
     STAGE_LABELS,
@@ -113,6 +113,7 @@ class StartRequest(BaseModel):
     constraints: Optional[list[str]] = None
     advanced_mode: Optional[Literal["pipeline", "roundtable", "debate"]] = None
     advanced_rounds: Optional[int] = Field(default=None, ge=1, le=3)
+    assignments: Optional[dict[str, str]] = None
 
 
 class DecisionRequest(BaseModel):
@@ -246,6 +247,8 @@ async def create_task(req: CreateV2TaskRequest):
         created_at=now,
         updated_at=now,
     )
+    # 创建即固化默认出场快照：无指派请求也保证运行期 author 一定能在快照中解析
+    task.experts, task.assignments = resolve_assignments({}, _EXPERT_STORE)
     store.save_task(task)
     return task.public_dict()
 
@@ -281,6 +284,10 @@ async def start_task(task_id: str, req: StartRequest | None = None):
         raise HTTPException(status_code=409, detail="计划已确认")
     if req is None:
         req = StartRequest()
+    if req.assignments is not None:
+        # 演示任务强制默认映射（防御）：外部指派不得改写演示剧本的出场角色
+        requested = {} if task.demo else req.assignments
+        task.experts, task.assignments = resolve_assignments(requested, _EXPERT_STORE)
     if req.constraints is not None:
         task.constraints = [Constraint(text=c) for c in req.constraints]
     if req.advanced_mode is not None:
