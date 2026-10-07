@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner"
 import { AdvancedSettings } from "@/components/v2/AdvancedSettings"
 import { ConstraintEditor } from "@/components/v2/ConstraintEditor"
+import { ExpertPanel } from "@/components/v2/ExpertPanel"
 import { RoleDuties } from "@/components/v2/RoleDuties"
 import { Shell } from "@/components/v2/Shell"
 import { StagePath } from "@/components/v2/StagePath"
@@ -34,6 +35,7 @@ export function PlanPage() {
   const [mode, setMode] = useState<AdvancedModeT>("pipeline")
   const [rounds, setRounds] = useState(2)
   const [starting, setStarting] = useState(false)
+  const [expertPanelOpen, setExpertPanelOpen] = useState(false)
 
   useEffect(() => {
     if (draftId) return
@@ -199,7 +201,20 @@ export function PlanPage() {
                 </div>
               </section>
               <section className="flex min-w-0 flex-1 flex-col gap-5 rounded-[14px] border border-border bg-card p-6">
-                <RoleDuties />
+                <RoleDuties
+                  headerAction={
+                    <button
+                      type="button"
+                      onClick={() => setExpertPanelOpen(true)}
+                      className={cn(
+                        "shrink-0 rounded-md text-[13px] text-secondary-foreground transition-colors hover:text-foreground",
+                        FOCUS_RING,
+                      )}
+                    >
+                      管理专家
+                    </button>
+                  }
+                />
               </section>
             </div>
             <StagePath />
@@ -251,6 +266,10 @@ export function PlanPage() {
             </div>
           </>
         )}
+        <ExpertPanel
+          open={expertPanelOpen}
+          onClose={() => setExpertPanelOpen(false)}
+        />
       </div>
     </Shell>
   )

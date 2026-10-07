@@ -1,11 +1,21 @@
 import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
-import { FolderOpen, LockKeyhole, Menu, Plus, Search, Settings2, X } from "lucide-react"
+import {
+  FolderOpen,
+  LockKeyhole,
+  Menu,
+  Plus,
+  Search,
+  Settings2,
+  UsersRound,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { useV2Tasks } from "@/hooks/useV2Tasks"
 import { useHashRoute } from "@/lib/router"
 import { cn } from "@/lib/utils"
 import { DemoChip, StatusBadge } from "@/components/v2/StatusBadge"
+import { ExpertPanel } from "@/components/v2/ExpertPanel"
 import { ThemeToggle } from "@/components/v2/ThemeToggle"
 
 const STATUS_LABELS: Record<string, string> = {
@@ -27,9 +37,11 @@ function taskHref(id: string, status: string) {
 function SidebarContent({
   activeId,
   onNavigate,
+  onOpenExperts,
 }: {
   activeId: string | null
   onNavigate?: () => void
+  onOpenExperts?: () => void
 }) {
   const { tasks } = useV2Tasks()
   const { navigate } = useHashRoute()
@@ -130,6 +142,14 @@ function SidebarContent({
             <FolderOpen className="size-4" aria-hidden />
             查看全部成果
           </button>
+          <button
+            type="button"
+            onClick={onOpenExperts}
+            className="flex shrink-0 items-center gap-2 rounded-lg px-1 py-2 text-[13px] text-secondary-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <UsersRound className="size-4" aria-hidden />
+            专家库
+          </button>
         </div>
       </div>
       <div className="flex shrink-0 flex-col gap-3 pt-4">
@@ -175,6 +195,7 @@ export function Shell({
 }) {
   const { route } = useHashRoute()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [expertPanelOpen, setExpertPanelOpen] = useState(false)
   const activeId = route.name === "task" || route.name === "outcome" ? route.id : null
 
   useEffect(() => {
@@ -189,7 +210,10 @@ export function Shell({
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-[232px] shrink-0 flex-col justify-between border-r border-border bg-sidebar px-4 pt-7 pb-6 lg:flex">
-        <SidebarContent activeId={activeId} />
+        <SidebarContent
+          activeId={activeId}
+          onOpenExperts={() => setExpertPanelOpen(true)}
+        />
       </aside>
       {drawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
@@ -210,7 +234,11 @@ export function Shell({
                 <X className="size-4" aria-hidden />
               </button>
             </div>
-            <SidebarContent activeId={activeId} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarContent
+              activeId={activeId}
+              onNavigate={() => setDrawerOpen(false)}
+              onOpenExperts={() => setExpertPanelOpen(true)}
+            />
           </aside>
         </div>
       )}
@@ -236,6 +264,7 @@ export function Shell({
         </header>
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
+      <ExpertPanel open={expertPanelOpen} onClose={() => setExpertPanelOpen(false)} />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { UserRoundCheck } from "lucide-react"
+import type { ReactNode } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -35,18 +36,21 @@ const ROLES = [
   },
 ]
 
-export function RoleDuties() {
+export function RoleDuties({ headerAction }: { headerAction?: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-lg font-bold text-foreground">四个视角，一份可用的判断</h3>
-        <button
-          type="button"
-          onClick={() => toast.info("本轮角色固定为四位，职责可在约束中补充")}
-          className={cn("shrink-0 rounded-md text-[13px] text-primary hover:underline", FOCUS_RING)}
-        >
-          调整分工
-        </button>
+        <h3 className="min-w-0 truncate text-lg font-bold text-foreground">四个视角，一份可用的判断</h3>
+        <div className="flex shrink-0 items-center gap-3">
+          {headerAction}
+          <button
+            type="button"
+            onClick={() => toast.info("本轮角色固定为四位，职责可在约束中补充")}
+            className={cn("shrink-0 rounded-md text-[13px] text-primary hover:underline", FOCUS_RING)}
+          >
+            调整分工
+          </button>
+        </div>
       </div>
       <p className="pb-2 text-sm text-muted-foreground">
         角色按职责参与，所有建议都将标明共识、分歧与待验证项。

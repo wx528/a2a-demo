@@ -76,6 +76,29 @@ export type OutcomeT = {
   acceptance?: { title?: string; detail?: string }[]
 } & Record<string, unknown>
 
+export type ExpertSourceT = "builtin" | "custom"
+
+export interface ExpertT {
+  id: string
+  name: string
+  url: string
+  tags: string[]
+  emoji: string
+  source: ExpertSourceT
+  enabled: boolean
+  card_name: string
+  probe: "up" | "down" | "unknown"
+}
+
+export interface TaskExpertT {
+  id: string
+  name: string
+  url: string
+  emoji: string
+  purpose: string
+  source: ExpertSourceT
+}
+
 export interface V2TaskT {
   id: string
   goal_type: string
@@ -96,6 +119,8 @@ export interface V2TaskT {
   created_at: number
   updated_at: number
   connections: Record<string, string>
+  experts: TaskExpertT[]
+  assignments: Record<string, string>
 }
 
 export interface V2TaskSummaryT {
@@ -122,6 +147,22 @@ export interface StartTaskBodyT {
   constraints?: string[]
   advanced_mode?: AdvancedModeT
   advanced_rounds?: number
+  assignments?: Record<string, string>
+}
+
+export interface AddExpertBodyT {
+  name: string
+  url: string
+  tags: string[]
+  emoji?: string
+}
+
+export interface UpdateExpertBodyT {
+  tags?: string[]
+  emoji?: string
+  enabled?: boolean
+  url?: string
+  name?: string
 }
 
 export type OutcomePatchT = {
@@ -227,6 +268,22 @@ export function confirmOutcome(id: string): Promise<OutcomeT> {
 
 export function exportUrl(id: string): string {
   return `${BASE}/tasks/${id}/export`
+}
+
+export function listExperts(enabledOnly = false): Promise<ExpertT[]> {
+  return request<ExpertT[]>(`/experts${enabledOnly ? "?enabled_only=true" : ""}`)
+}
+
+export function addExpert(body: AddExpertBodyT): Promise<ExpertT> {
+  return jsonRequest<ExpertT>("/experts", "POST", body)
+}
+
+export function updateExpert(id: string, patch: UpdateExpertBodyT): Promise<ExpertT> {
+  return jsonRequest<ExpertT>(`/experts/${id}`, "PATCH", patch)
+}
+
+export function deleteExpert(id: string): Promise<{ deleted: string }> {
+  return jsonRequest<{ deleted: string }>(`/experts/${id}`, "DELETE")
 }
 
 export function streamUrl(id: string): string {
