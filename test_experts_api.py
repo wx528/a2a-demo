@@ -37,3 +37,7 @@ def test_register_list_patch_delete(client, monkeypatch):
     assert client.patch(f"/api/v2/experts/{eid}", json={"enabled": False}).json()["enabled"] is False
     assert client.delete(f"/api/v2/experts/{eid}").status_code == 200
     assert client.delete("/api/v2/experts/ada").status_code == 409
+
+
+def test_delete_missing_expert_returns_404(client):
+    assert client.delete("/api/v2/experts/ghost").status_code == 404

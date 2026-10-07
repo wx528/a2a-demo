@@ -9,6 +9,7 @@ import asyncio
 import os
 import re
 import time
+import unicodedata
 import uuid
 from typing import Literal, Optional
 from urllib.parse import quote
@@ -161,18 +162,44 @@ class CreateExpertRequest(BaseModel):
 
 
 class UpdateExpertRequest(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=40)
     url: Optional[str] = None
     tags: Optional[list[str]] = Field(default=None, max_length=8)
     emoji: Optional[str] = None
     enabled: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_clean(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.replace("\n", " ").strip()
+        if not cleaned:
+            raise ValueError("名称不能为空")
+        return cleaned
+
+    @field_validator("emoji")
+    @classmethod
+    def _emoji_clean(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = "".join(
+            ch for ch in value if not unicodedata.category(ch).startswith("C")
+        ).strip()
+        if len(cleaned) > 4:
+            raise ValueError("emoji 不超过 4 个字符")
+        return cleaned
 
     @field_validator("tags")
     @classmethod
     def _tags_limit(cls, value: Optional[list[str]]) -> Optional[list[str]]:
         if value is None:
             return value
-        cleaned = [tag.strip() for tag in value if tag.strip()]
+        cleaned = []
+        for tag in value:
+            tag = tag.replace("\n", " ").strip()
+            if tag:
+                cleaned.append(tag)
         for tag in cleaned:
             if len(tag) > 12:
                 raise ValueError("单个标签不超过 12 字")
@@ -183,6 +210,7 @@ class UpdateExpertRequest(BaseModel):
     def _url_scheme(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return value
+        value = value.replace("\n", " ").strip()
         if not value.startswith(("http://", "https://")):
             raise ValueError("地址必须以 http:// 或 https:// 开头")
         return value
@@ -203,8 +231,21 @@ def _probe_expert(url: str) -> tuple[bool, str]:
     try:
         resp = httpx.get(f"{url}{_PROBE_PATH}", trust_env=False, timeout=_PROBE_TIMEOUT)
     except Exception as exc:
-        return False, f"{type(exc).__name__}: {exc}"
+        # 只保留异常类型名，不回显底层 message（防内网拓扑泄漏）
+        return False, type(exc).__name__
     return (True, "") if resp.status_code == 200 else (False, f"HTTP {resp.status_code}")
+
+
+def _probe_card(url: str) -> tuple[bool, str, str]:
+    """注册/更新前的探活 + 展示名：返回 (是否可达, 失败原因, card name)。
+
+    探活经 _probe_expert（保留其可被测试 monkeypatch 的二元组签名），
+    可达时再取 agent-card 的 name；整体只在工作线程内调用，不阻塞事件循环。
+    """
+    ok, reason = _probe_expert(url)
+    if not ok:
+        return False, reason, ""
+    return True, "", _fetch_card_name(url)
 
 
 async def _probe_label(url: str) -> str:
@@ -567,7 +608,7 @@ async def list_experts(enabled_only: bool = False):
 
 @router.post("/experts")
 async def create_expert(req: CreateExpertRequest):
-    ok, reason = await asyncio.to_thread(_probe_expert, req.url)
+    ok, reason, card_name = await asyncio.to_thread(_probe_card, req.url)
     if not ok:
         raise HTTPException(status_code=422, detail=f"无法连通该地址：{reason}")
     expert = Expert(
@@ -577,7 +618,7 @@ async def create_expert(req: CreateExpertRequest):
         tags=req.tags,
         emoji=req.emoji,
         source="custom",
-        card_name=_fetch_card_name(req.url),
+        card_name=card_name,
     )
     try:
         _EXPERT_STORE.create_expert(expert)

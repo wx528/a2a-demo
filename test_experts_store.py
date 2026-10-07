@@ -1,5 +1,5 @@
 import pytest
-from web.v2.experts import (BUILTIN_EXPERTS, DEFAULT_ASSIGNMENTS, PURPOSES, V2ExpertStore)
+from web.v2.experts import (BUILTIN_EXPERTS, DEFAULT_ASSIGNMENTS, PURPOSES, V2ExpertStore, resolve_assignments)
 
 
 def test_defaults_and_builtins():
@@ -46,6 +46,17 @@ def test_update_cannot_change_id(tmp_path):
         s.update_expert("custom1", {"id": "custom2"})
     assert s.get_expert("custom2") is None
     assert s.get_expert("custom1").name == "C"
+
+
+def test_resolve_fallback_avoids_disabled_default(tmp_path):
+    s = V2ExpertStore(str(tmp_path / "db.sqlite"))
+    s.init()
+    s.update_expert("linus", {"enabled": False})
+    experts, asg = resolve_assignments({"challenge": "linus"}, s)
+    assert asg["challenge"] != "linus"  # 禁用者不得坐上挑战槽
+    picked = s.get_expert(asg["challenge"])
+    assert picked is not None and picked.enabled
+    assert picked.source == "builtin"
 
 
 def test_task_snapshot_fields():

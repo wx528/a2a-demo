@@ -158,7 +158,9 @@ class V2ExpertStore:
 
     def delete_expert(self, expert_id: str):
         existing = self.get_expert(expert_id)
-        if existing is not None and existing.source == "builtin":
+        if existing is None:
+            raise ValueError(f"专家不存在：{expert_id}")
+        if existing.source == "builtin":
             raise ValueError("内置专家不可删除，可禁用")
         conn = self._connect()
         try:
@@ -168,27 +170,67 @@ class V2ExpertStore:
             conn.close()
 
 
+def _fallback_expert_id(
+    catalog: dict[str, Expert], purpose: str, used: set[str]
+) -> str:
+    """默认 builtin 不可用时的回退：第一个 enabled 且标签命中该 purpose 中文
+    标签的其他 builtin；无标签命中则任一未占用的 enabled builtin；
+    全员不可用才照坐默认（角落行为可解释）。"""
+    default_id = DEFAULT_ASSIGNMENTS[purpose]
+    tag = PURPOSE_TAG_BY[purpose]
+    pool = [
+        e
+        for e in catalog.values()
+        if e.source == "builtin"
+        and e.enabled
+        and e.id != default_id
+        and e.id not in used
+    ]
+    tagged = next((e.id for e in pool if tag in e.tags), None)
+    if tagged is not None:
+        return tagged
+    return next((e.id for e in pool), default_id)
+
+
 def resolve_assignments(
     requested: dict[str, str], store: V2ExpertStore
 ) -> tuple[list[TaskExpert], dict[str, str]]:
     """校验请求指派并固化出场快照（assignments + experts 一并返回）。
 
-    purpose 非法/专家不存在或被禁用 → 该槽回退默认映射；同一专家不可占两槽，
-    重复时保留先到槽位、后到槽位回退默认。快照含全部出场专家（按 PURPOSES 顺序去重），
-    内置默认一律取自 store（编辑过的 url/tags 随之生效）。
+    purpose 非法/专家不存在或被禁用 → 该槽回退默认映射；默认 builtin 被禁用
+    或已被占用时，按 purpose 中文标签（PURPOSE_TAG_BY）挑第一个 enabled 的
+    其他 builtin，无标签命中则任一 enabled builtin，全员禁用才照坐默认。
+    同一专家不可占两槽，重复时保留先到槽位、后到槽位按上述规则回退。
+    快照含全部出场专家（按 PURPOSES 顺序去重），内置默认一律取自 store
+    （编辑过的 url/tags 随之生效）。
     """
     catalog = {e.id: e for e in store.list_experts()}
     assignments: dict[str, str] = {}
     used: set[str] = set()
     for purpose in PURPOSES:
         expert_id = requested.get(purpose) or ""
-        if expert_id not in catalog or not catalog[expert_id].enabled or expert_id in used:
-            expert_id = DEFAULT_ASSIGNMENTS[purpose]
+        if not (
+            expert_id in catalog
+            and catalog[expert_id].enabled
+            and expert_id not in used
+        ):
+            default_id = DEFAULT_ASSIGNMENTS[purpose]
+            if (
+                default_id in catalog
+                and catalog[default_id].enabled
+                and default_id not in used
+            ):
+                expert_id = default_id
+            else:
+                expert_id = _fallback_expert_id(catalog, purpose, used)
         used.add(expert_id)
         assignments[purpose] = expert_id
     snapshot: dict[str, TaskExpert] = {}
     for purpose in PURPOSES:
-        expert = catalog[assignments[purpose]]
+        expert = catalog.get(assignments[purpose])
+        if expert is None:
+            # 空注册表/全员禁用的角落：无牌可坐，跳过该槽快照而非 KeyError
+            continue
         snapshot.setdefault(
             expert.id,
             TaskExpert(
