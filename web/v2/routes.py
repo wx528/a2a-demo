@@ -23,6 +23,7 @@ from web.v2 import demo
 from web.v2.agents_client import ROLE_AGENTS, AgentSpeakerBackend, reload_urls
 from web.v2.broadcaster import Broadcaster
 from web.v2.experts import Expert, V2ExpertStore, resolve_assignments
+from shared.a2a_client import _auth_headers
 from web.v2.models import (
     STAGES,
     STAGE_LABELS,
@@ -229,7 +230,12 @@ def _require_task(task_id: str) -> V2Task:
 def _probe_expert(url: str) -> tuple[bool, str]:
     """探活单个 Agent：GET agent-card（2s 超时），返回 (是否可达, 失败原因)。"""
     try:
-        resp = httpx.get(f"{url}{_PROBE_PATH}", trust_env=False, timeout=_PROBE_TIMEOUT)
+        resp = httpx.get(
+            f"{url}{_PROBE_PATH}",
+            headers=_auth_headers(),
+            trust_env=False,
+            timeout=_PROBE_TIMEOUT,
+        )
     except Exception as exc:
         # 只保留异常类型名，不回显底层 message（防内网拓扑泄漏）
         return False, type(exc).__name__
@@ -271,10 +277,8 @@ async def _probe_connections(task: V2Task) -> dict[str, str]:
 
 @router.post("/tasks")
 async def create_task(req: CreateV2TaskRequest):
-    if req.goal_type != "decision":
-        raise HTTPException(
-            status_code=422, detail="该目标类型本轮暂不支持，已为你锁定「做出决策」路径"
-        )
+    # 前端四张目标卡（研究/比较/评审/决策）当前都进入同一套四阶段决策流程；
+    # 非决策类型落库归一化为 decision（模型与流程暂只支持该路径）。
     now = time.time()
     task = V2Task(
         id=uuid.uuid4().hex[:8],
@@ -584,7 +588,12 @@ async def export_task(task_id: str):
 def _fetch_card_name(url: str) -> str:
     """从 agent-card 的 name 字段取展示名（≤40 字，解析失败不阻塞注册）。"""
     try:
-        resp = httpx.get(f"{url}{_PROBE_PATH}", trust_env=False, timeout=_PROBE_TIMEOUT)
+        resp = httpx.get(
+            f"{url}{_PROBE_PATH}",
+            headers=_auth_headers(),
+            trust_env=False,
+            timeout=_PROBE_TIMEOUT,
+        )
         return str(resp.json().get("name") or "")[:40]
     except Exception:
         return ""

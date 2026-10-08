@@ -31,6 +31,15 @@
 - **修复监听地址硬编码**（issue #1，感谢 @shunfeng8421）：此前所有服务 `uvicorn.run` 硬编码 `host="0.0.0.0"`，忽略 `HOST` env；现改为独立的 `BIND_HOST`（本地裸跑默认 `127.0.0.1` 只听回环，docker compose 显式 `BIND_HOST=0.0.0.0`），涉及 research/writing/debate/role agents、orchestrator、web 全部入口
 - **新增可选 API Key 鉴权**（issue #1 建议）：设置 `A2A_API_KEY` 后，所有 agent 的 `/rpc`、`/rpc/stream` 与 orchestrator 写操作要求 `Authorization: Bearer` 或 `X-API-Key`，Agent Card 附带 `securitySchemes` 声明；内部互调（`shared/a2a_client`）自动附带 key；未设置时行为不变
 
+### Fixed
+
+- **决策门按任务目标派生**（外部 review）：非演示任务的门问题与选项从 goal_text 生成（采纳/调整/暂不确定语义不变），不再对所有任务复用演示脚本文案；演示任务保持脚本不变
+- **探活/取卡名附带鉴权头**（外部 review）：开 `A2A_API_KEY` 后专家探活不再误报 down（`web/v2/routes.py` 两处裸 httpx 补 `_auth_headers`）
+- **compose 鉴权覆盖补全**（外部 review）：research-agent / writing-agent 补传 `A2A_API_KEY`，此前 9 服务只覆盖 7 个
+- **CI 全量测试**（外部 review）：`ci.yml` 从只跑 3 个文件改为 `uv run pytest -q`（27 个文件全量）；顺带修复 debate_agent 两个流式测试在 agentic 循环重构（9efcc53）后补丁点腐化的问题——它们从未进过 CI
+- **goal_type 归一化**（外部 review）：前端四张目标卡（研究/比较/评审/决策）统一进入当前决策流程，创建任务不再对非 decision 类型返回 422
+- **web 服务持久卷**（外部 review）：新增 `web-data` 卷挂载 `/app/data`，V2 任务数据不再随容器重建丢失
+
 - Web 会议室**步进模式（默认）**：逐轮驱动 API（`POST /turns/next` 一次执行一轮，`turn_done` 收尾），发言前暂停可插入用户发言（辩论中成为观众质询），一键切换自动连播；`GET /next-turn` 预览下一位，`GET /api/personas` 人格列表
 - Web 会议室**辩论模式**：正/反方人格下拉（苏格拉底/休谟/康德/尼采/怀疑论工程师/风险投资人）+ 1-3 轮 + 裁判总结卡片，引用可点击；接 `debate-agent`（`DEBATE_AGENT_URL`）
 - debate-agent 输入契约新增可选 `[观众质询/INQUIRY]` 段

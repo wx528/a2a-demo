@@ -29,9 +29,11 @@ def _create(client, **kw):
     return client.post("/api/v2/tasks", json=body)
 
 
-def test_create_rejects_unsupported(client):
+def test_create_normalizes_goal_types_to_decision(client):
+    """前端四张目标卡当前都走同一决策流程：非 decision 类型归一化落库，不再 422。"""
     r = _create(client, goal_type="research")
-    assert r.status_code == 422
+    assert r.status_code == 200, r.text
+    assert r.json()["goal_type"] == "decision"
 
 
 def test_full_demo_loop(client):

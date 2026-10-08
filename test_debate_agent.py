@@ -153,8 +153,9 @@ def test_streaming_success_assembles_chunks(monkeypatch):
         lambda q, max_results=5: [{"title": "t", "url": "https://real.com", "snippet": "s"}],
     )
     monkeypatch.setattr(m, "call_llm", lambda *a, **k: None)
+    # agentic 循环重构（9efcc53）后，debate 的流式出口是 agentic_stream——测它到 SSE 的桥接
     monkeypatch.setattr(
-        m, "call_llm_stream",
+        m, "agentic_stream",
         lambda system, user, **kw: iter(["Hello ", "debate"]),
     )
     client = TestClient(app)
@@ -186,7 +187,7 @@ def test_streaming_midstream_failure_marks_failed(monkeypatch):
 
     monkeypatch.setattr(m, "web_search", lambda q, max_results=5: [])
     monkeypatch.setattr(m, "call_llm", lambda *a, **k: None)
-    monkeypatch.setattr(m, "call_llm_stream", bad_stream)
+    monkeypatch.setattr(m, "agentic_stream", bad_stream)
     client = TestClient(app)
     events = _stream_events(client, INPUT)
 

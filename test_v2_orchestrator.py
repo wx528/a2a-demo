@@ -51,7 +51,8 @@ async def test_confirm_completes_task(tmp_path):
     assert t.decisions[0].chosen_id == "o1"
     kinds = [(x.author, x.kind) for x in t.turns]
     assert ("user", "decision_record") in kinds and ("sage", "statement") in kinds
-    assert any(c.confirmed and c.text == "仅内部 Agent" for c in t.constraints)
+    o1_label = next(o.label for o in t.decisions[0].options if o.id == "o1")
+    assert any(c.confirmed and c.text == o1_label for c in t.constraints)
     assert t.outcome is not None
 
 

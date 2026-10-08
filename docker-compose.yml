@@ -16,6 +16,7 @@ services:
       - PORT=8001
       - HOST=research-agent
       - BIND_HOST=0.0.0.0
+      - A2A_API_KEY=${A2A_API_KEY:-}
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
@@ -36,6 +37,7 @@ services:
       - PORT=8002
       - HOST=writing-agent
       - BIND_HOST=0.0.0.0
+      - A2A_API_KEY=${A2A_API_KEY:-}
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
@@ -108,6 +110,8 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+    volumes:
+      - web-data:/app/data
     depends_on:
       - research-agent
       - writing-agent
@@ -203,3 +207,4 @@ volumes:
   research-agent-data:
   writing-agent-data:
   debate-agent-data:
+  web-data:

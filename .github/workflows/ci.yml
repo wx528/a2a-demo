@@ -46,7 +46,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Unit tests
-        run: uv run pytest test_a2a.py test_registry.py test_task_store.py -q
+        run: uv run pytest -q
 
       - name: E2E (real services, LLM fallback)
         run: uv run python test_e2e.py

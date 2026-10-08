@@ -58,6 +58,37 @@ _PURPOSE_BY_KEY: dict[str, str] = {
 }
 
 
+def _real_gate_for(task: V2Task) -> tuple[str, list[dict]]:
+    """非演示任务的决策门：问题/选项从任务目标派生，语义与演示脚本一致（采纳/调整/暂不确定）。"""
+    goal = task.goal_text.strip()
+    short = goal if len(goal) <= 36 else goal[:36] + "……"
+    question = f"关于「{short}」的关键取舍，怎么定？"
+    options = [
+        {
+            "id": "o1",
+            "label": "按当前方向推进",
+            "impact": "锁定已确认约束，进入建议整理",
+            "recommended": True,
+            "uncertain": False,
+        },
+        {
+            "id": "o2",
+            "label": "调整方向后再推进",
+            "impact": "按你的补充意见修订讨论重点",
+            "recommended": False,
+            "uncertain": False,
+        },
+        {
+            "id": "o3",
+            "label": "暂不确定",
+            "impact": "先补一轮比较，再回来确认",
+            "recommended": False,
+            "uncertain": True,
+        },
+    ]
+    return question, options
+
+
 def expert_for(task: V2Task, key: str) -> str:
     """key→purpose→任务指派；无指派时回退默认映射，指派不在快照中再回退默认（确定性）。"""
     purpose = _PURPOSE_BY_KEY[key]
@@ -145,11 +176,15 @@ class Orchestrator:
 
     def _open_gate(self, task: V2Task) -> Decision:
         round_no = len(task.decisions) + 1
+        if task.demo:
+            question, options = demo.DEMO_QUESTION, demo.DEMO_OPTIONS
+        else:
+            question, options = _real_gate_for(task)
         decision = Decision(
             id=f"d{round_no}",
             round=round_no,
-            question=demo.DEMO_QUESTION,
-            options=[DecisionOption(**opt) for opt in demo.DEMO_OPTIONS],
+            question=question,
+            options=[DecisionOption(**opt) for opt in options],
         )
         task.decisions.append(decision)
         task.status = "waiting_confirmation"
