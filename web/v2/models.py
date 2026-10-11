@@ -46,7 +46,7 @@ class Turn(BaseModel):
     seq: int
     stage: Stage
     author: str
-    kind: Literal["statement", "user_note", "decision_record", "system"]
+    kind: Literal["statement", "user_note", "decision_record", "system", "vote_summary"]
     title: str = ""
     body: str = ""
     verified: bool = False
@@ -114,6 +114,19 @@ class TaskExpert(BaseModel):
     source: Literal["builtin", "custom"] = "custom"
 
 
+class Ballot(BaseModel):
+    verdict: Literal["approve", "adjust", "reject", "abstain"]
+    confidence: int = 0
+    reason: str = ""
+
+
+class CommitteeVote(BaseModel):
+    tally: dict[str, int]
+    split: Literal["unanimous", "majority", "split"]
+    ballots: list[Ballot]
+    quorum: int
+
+
 class V2Task(BaseModel):
     id: str
     goal_type: Literal["decision"] = "decision"
@@ -131,6 +144,7 @@ class V2Task(BaseModel):
     turns: list[Turn] = Field(default_factory=list)
     decisions: list[Decision] = Field(default_factory=list)
     outcome: OutcomeDoc | None = None
+    committee_vote: CommitteeVote | None = None
     demo: bool = False
     error: str | None = None
     created_at: float
