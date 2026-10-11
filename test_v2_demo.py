@@ -79,3 +79,14 @@ def test_derived_outcome_without_sage_falls_back():
     o = demo.build_outcome(t)
     assert o.conclusion == "讨论已完成，建议草稿待整理"
     assert o.reasons == [] and o.evidence == []
+
+
+def test_demo_ballots_majority_2_1_1():
+    from web.v2 import demo
+    from web.v2.models import V2Task
+    from web.v2 import vote as vote_mod
+
+    task = V2Task(id="d1", goal_text="g", demo=True, created_at=1.0, updated_at=1.0)
+    result = vote_mod.aggregate(task, demo.DEMO_BALLOTS)
+    assert result.tally == {"approve": 2, "adjust": 1, "reject": 1}
+    assert result.split == "majority" and result.quorum == 4

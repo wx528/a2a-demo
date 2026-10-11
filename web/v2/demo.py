@@ -52,8 +52,13 @@ DEMO_OPTIONS: list[dict] = [
     },
 ]
 
-# demo 任务的委员会选票（席位→票）；v1 先占位为空：全弃权聚合后 quorum=0，投票静默跳过
-DEMO_BALLOTS: dict[str, Ballot] = {}
+# 委员会独立投票脚本票（demo 专用，2:1:1 majority，与 goal 无关、确定性）
+DEMO_BALLOTS: dict[str, Ballot] = {
+    "ada": Ballot(verdict="approve", confidence=4, reason="方向与已确认约束一致"),
+    "turing": Ballot(verdict="adjust", confidence=3, reason="建议补一个可观测的验收口径"),
+    "linus": Ballot(verdict="reject", confidence=2, reason="试点边界外仍有未讨论的权限面"),
+    "sage": Ballot(verdict="approve", confidence=4, reason="各阶段证据无根本分歧"),
+}
 
 SCRIPTS: dict[str, tuple[str, str]] = {
     "clarify_ada": (
