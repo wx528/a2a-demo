@@ -210,6 +210,18 @@ const [thinkingAuthor, setThinkingAuthor] = useState<string | null>(null)
       void applyRefresh(taskId)
     })
 
+    source.addEventListener("vote_start", (event) => {
+      if (cancelled) return
+      const data = parsePayload<{ author?: unknown }>(event)
+      setThinkingAuthor(typeof data?.author === "string" ? data.author : "committee")
+    })
+
+    source.addEventListener("vote_revealed", () => {
+      if (cancelled) return
+      setThinkingAuthor(null)
+      void applyRefresh(taskId)
+    })
+
     source.addEventListener("intervention_ack", () => {
       if (cancelled) return
       // 行内 ack 已即时反馈，这里只刷新落库结果，不再重复 toast

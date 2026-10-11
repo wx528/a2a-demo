@@ -41,12 +41,25 @@ export interface DecisionT {
   status: "open" | "resolved"
 }
 
+export interface BallotT {
+  verdict: "approve" | "adjust" | "reject" | "abstain"
+  confidence: number
+  reason: string
+}
+
+export interface CommitteeVoteT {
+  tally: Record<string, number>
+  split: "unanimous" | "majority" | "split"
+  ballots: BallotT[]
+  quorum: number
+}
+
 export interface TurnT {
   id: string
   seq: number
   stage: StageT
   author: string
-  kind: "statement" | "user_note" | "decision_record" | "system"
+  kind: "statement" | "user_note" | "decision_record" | "system" | "vote_summary"
   title: string
   body: string
   verified: boolean
@@ -121,6 +134,7 @@ export interface V2TaskT {
   connections: Record<string, string>
   experts: TaskExpertT[]
   assignments: Record<string, string>
+  committee_vote: CommitteeVoteT | null
 }
 
 export interface V2TaskSummaryT {

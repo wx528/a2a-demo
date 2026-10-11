@@ -56,6 +56,7 @@ function podSummary(task: V2StreamTaskT, thinkingAuthor: string | null): string 
   if (task.status === "paused") return "讨论已暂停"
   if (task.status === "failed") return "讨论中断"
   if (task.status === "completed") return "讨论已完成"
+  if (thinkingAuthor === "committee") return "委员会投票中…"
   if (thinkingAuthor) return `${roleMetaFromTask(task, thinkingAuthor).zh} 思考中…`
   const speaking = podRoles(task).find((role) => roleState(task, role, null) === "speaking")
   if (speaking) return `${roleMetaFromTask(task, speaking).zh} 发言中`

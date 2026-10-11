@@ -3,25 +3,39 @@ import type { KeyboardEvent } from "react"
 import { CircleHelp, Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import type { V2StreamTaskT } from "@/hooks/useV2Stream"
-import { submitDecision, type DecisionT, type V2TaskT } from "@/lib/v2api"
+import { submitDecision, type CommitteeVoteT, type DecisionT, type V2TaskT } from "@/lib/v2api"
 import { cn } from "@/lib/utils"
 
 const FOCUS_RING = "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+
+const SPLIT_LABELS: Record<CommitteeVoteT["split"], string> = {
+  unanimous: "全票一致",
+  majority: "多数意见",
+  split: "意见分裂",
+}
 
 export function DecisionGate({
   task,
   decision,
   onDecided,
+  committeeVote = null,
+  committeeVoteTag = null,
 }: {
   task: V2StreamTaskT
   decision: DecisionT
   onDecided: (updated: V2TaskT, uncertain: boolean) => void
+  committeeVote?: CommitteeVoteT | null
+  committeeVoteTag?: string | null
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   const recommended = decision.options.find((option) => option.recommended)
+  const quorum = committeeVote?.quorum ?? 0
+  const tally = committeeVote?.tally ?? {}
+  const pct = (key: string) =>
+    quorum > 0 ? Math.round(((tally[key] ?? 0) / quorum) * 100) : 0
 
   const focusOption = (index: number) => {
     const count = decision.options.length
@@ -74,6 +88,23 @@ export function DecisionGate({
         <p className="text-sm text-secondary-foreground">
           基于你的约束，建议选择「{recommended.label}」。这是建议，尚未替你确认。
         </p>
+      ) : null}
+      {committeeVote && committeeVote.quorum > 0 ? (
+        <div className="flex flex-col gap-1.5 rounded-lg bg-panel p-3">
+          <div
+            className="flex h-2 overflow-hidden rounded-full bg-border"
+            role="img"
+            aria-label={`委员会投票：赞成 ${committeeVote.tally.approve ?? 0}，调整 ${committeeVote.tally.adjust ?? 0}，反对 ${committeeVote.tally.reject ?? 0}`}
+          >
+            <span className="bg-emerald-500" style={{ width: `${pct("approve")}%` }} />
+            <span className="bg-amber-500" style={{ width: `${pct("adjust")}%` }} />
+            <span className="bg-rose-500" style={{ width: `${pct("reject")}%` }} />
+          </div>
+          <span className="text-xs text-muted-foreground">
+            委员会投票 · {SPLIT_LABELS[committeeVote.split]}
+            {committeeVoteTag ? ` · ${committeeVoteTag}` : null}
+          </span>
+        </div>
       ) : null}
       <div
         role="radiogroup"

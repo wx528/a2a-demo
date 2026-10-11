@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
-import { AlertTriangle, ArrowLeft, Loader2, Pause } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Loader2, Pause, Vote } from "lucide-react"
 import { toast } from "sonner"
 import { DecisionGate } from "@/components/v2/DecisionGate"
 import { DemoBadge } from "@/components/v2/StatusBadge"
@@ -332,16 +332,30 @@ export function WorkspacePage({ id }: { id: string }) {
                 {thinkingAuthor && task.status === "running" ? (
                   <div
                     role="status"
-                    aria-label={`${roleMetaFromTask(task, thinkingAuthor).zh}正在思考`}
+                    aria-label={
+                      thinkingAuthor === "committee"
+                        ? "委员会投票中"
+                        : `${roleMetaFromTask(task, thinkingAuthor).zh}正在思考`
+                    }
                     className="flex items-center gap-3 py-1"
                   >
                     <span className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-panel text-[19px]">
-                      {roleMetaFromTask(task, thinkingAuthor).emoji}
+                      {thinkingAuthor === "committee" ? (
+                        <Vote className="size-[18px] text-primary" aria-hidden />
+                      ) : (
+                        roleMetaFromTask(task, thinkingAuthor).emoji
+                      )}
                     </span>
                     <span className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
-                      {roleMetaFromTask(task, thinkingAuthor).zh} ·{" "}
-                      {roleMetaFromTask(task, thinkingAuthor).en} 正在思考…
+                      {thinkingAuthor === "committee" ? (
+                        "委员会投票中…"
+                      ) : (
+                        <>
+                          {roleMetaFromTask(task, thinkingAuthor).zh} ·{" "}
+                          {roleMetaFromTask(task, thinkingAuthor).en} 正在思考…
+                        </>
+                      )}
                       <span className="flex items-center gap-1" aria-hidden>
                         <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
                         <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:150ms]" />
@@ -361,6 +375,8 @@ export function WorkspacePage({ id }: { id: string }) {
                   task={task}
                   decision={openDecision}
                   onDecided={handleDecided}
+                  committeeVote={task.committee_vote}
+                  committeeVoteTag={task.decisions.length > 1 ? "首轮投票" : null}
                 />
               ) : null}
             </section>
