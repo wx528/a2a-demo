@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from web.v2.experts import Expert, V2ExpertStore, resolve_assignments
 from web.v2.agents_client import build_turn_prompt
-from web.v2.models import TaskExpert, V2Task
+from web.v2.models import Ballot, TaskExpert, V2Task
 
 
 def test_resolve_assignments_fallback_and_snapshot(tmp_path):
@@ -73,6 +73,10 @@ async def test_orchestrator_uses_assignment(tmp_path):
         async def speak(self, task, author, key):
             seen.append((key, author))
             return (key, "b", False)
+
+        async def vote_direction(self, task, seat):
+            # 该用例只关心发言指派：按全弃权处理，投票静默跳过
+            return Ballot(verdict="abstain")
 
     store = V2Store(str(tmp_path / "db.sqlite"))
     store.init()

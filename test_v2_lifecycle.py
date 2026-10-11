@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from web.v2.models import V2Task
+from web.v2.models import Ballot, V2Task
 from web.v2.store import V2Store
 from web.v2.orchestrator import Orchestrator, NullBroadcaster
 
@@ -16,6 +16,24 @@ class SlowBackend:
             raise RuntimeError("llm down")
         await asyncio.sleep(0.05)
         return (key, "b", False)
+
+    async def vote_direction(self, task, seat):
+        # 既有用例只关心发言与门：默认全弃权，投票静默跳过
+        return Ballot(verdict="abstain")
+
+
+class VoteBackend(SlowBackend):
+    """在 SlowBackend 之上实现 vote_direction：按席位返回固定票。"""
+
+    def __init__(self, ballots=None, fail_seats=()):
+        super().__init__()
+        self.ballots = ballots or {}
+        self.fail_seats = set(fail_seats)
+
+    async def vote_direction(self, task, seat):
+        if seat in self.fail_seats:
+            raise RuntimeError("vote call down")
+        return self.ballots.get(seat, Ballot(verdict="approve", confidence=3, reason="ok"))
 
 
 def _mk(tmp_path, backend):
@@ -106,3 +124,55 @@ async def test_demo_task_gate_keeps_script(tmp_path):
     t = store.get_task("d1")
     assert t.status == "waiting_confirmation"
     assert t.decisions[0].question == demo.DEMO_QUESTION
+
+
+@pytest.mark.asyncio
+async def test_vote_summary_before_gate(tmp_path):
+    """review 末、门开前完成投票：事件内容、turn 与 committee_vote 均就位。"""
+    backend = VoteBackend({
+        "ada": Ballot(verdict="approve", confidence=4, reason="a"),
+        "turing": Ballot(verdict="adjust", confidence=3, reason="b"),
+        "linus": Ballot(verdict="reject", confidence=2, reason="c"),
+        "sage": Ballot(verdict="approve", confidence=4, reason="d"),
+    })
+    store, orch = _mk(tmp_path, backend)
+    await asyncio.wait_for(orch.run_task("t1"), timeout=5)
+    t = store.get_task("t1")
+    assert t.status == "waiting_confirmation"
+    assert t.committee_vote is not None and t.committee_vote.quorum == 4
+    summary = [x for x in t.turns if x.kind == "vote_summary"]
+    assert len(summary) == 1 and summary[0].author == "committee"
+    gate_index = len(t.turns) - 1  # decision 尚未落 turn；门在投票之后
+    assert all(x.kind != "vote_summary" for x in t.turns[:gate_index])
+
+
+@pytest.mark.asyncio
+async def test_vote_runs_once_across_retry(tmp_path):
+    """retry 后不重投：committee_vote 已存在即跳过。"""
+    backend = VoteBackend({"ada": Ballot(verdict="approve", confidence=4, reason="a"),
+                           "turing": Ballot(verdict="approve", confidence=4, reason="b"),
+                           "linus": Ballot(verdict="approve", confidence=4, reason="c"),
+                           "sage": Ballot(verdict="approve", confidence=4, reason="d")})
+    store, orch = _mk(tmp_path, backend)
+    await asyncio.wait_for(orch.run_task("t1"), timeout=5)
+    first = store.get_task("t1").committee_vote
+    assert first is not None
+    # retry 仅接受 failed 任务：门开后标记失败再重试，续跑不得重投
+    t = store.get_task("t1")
+    t.status = "failed"
+    store.save_task(t)
+    await asyncio.wait_for(orch.retry("t1"), timeout=5)
+    t = store.get_task("t1")
+    assert t.committee_vote.ballots == first.ballots  # 未重投（票序与内容不变）
+    assert len([x for x in t.turns if x.kind == "vote_summary"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_vote_all_abstain_skips_summary(tmp_path):
+    """全部弃权：不生成 committee_vote、无 vote_summary，门照常开。"""
+    backend = VoteBackend({s: Ballot(verdict="abstain") for s in ("ada", "turing", "linus", "sage")})
+    store, orch = _mk(tmp_path, backend)
+    await asyncio.wait_for(orch.run_task("t1"), timeout=5)
+    t = store.get_task("t1")
+    assert t.status == "waiting_confirmation" and t.committee_vote is None
+    assert not [x for x in t.turns if x.kind == "vote_summary"]

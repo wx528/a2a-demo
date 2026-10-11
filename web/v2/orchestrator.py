@@ -8,7 +8,7 @@ import asyncio
 import time
 from typing import Protocol
 
-from web.v2 import demo
+from web.v2 import demo, vote
 from web.v2.experts import DEFAULT_ASSIGNMENTS
 from web.v2.models import (
     STAGES,
@@ -174,6 +174,34 @@ class Orchestrator:
         self._publish(task.id, "turn_done", {"turn_id": turn.id, "seq": turn.seq})
         return turn
 
+    async def _run_vote(self, task: V2Task) -> None:
+        """门开前的委员会独立投票；全弃权则静默跳过，流程不阻塞。"""
+        if task.committee_vote is not None:
+            return
+        self._publish(task.id, "vote_start", {"author": "committee"})
+        if task.demo:
+            ballots_by_seat = dict(demo.DEMO_BALLOTS)
+        else:
+            assignments = task.assignments or DEFAULT_ASSIGNMENTS
+            ballots_by_seat = {}
+            for seat in assignments.values():  # 四个 purpose 的在任席位（快照）
+                ballots_by_seat[seat] = await self.backend.vote_direction(task, seat)
+        result = vote.aggregate(task, ballots_by_seat)
+        if result.quorum == 0:
+            return
+        task.committee_vote = result
+        turn = self._make_turn(
+            task, "review", "committee", "vote_summary",
+            title="委员会投票", body=vote.render_summary(result),
+        )
+        self._save(task)
+        self._publish(task.id, "vote_revealed", {
+            "turn_id": turn.id,
+            "tally": result.tally,
+            "split": result.split,
+        })
+        self._publish(task.id, "turn_done", {"turn_id": turn.id, "seq": turn.seq})
+
     def _open_gate(self, task: V2Task) -> Decision:
         round_no = len(task.decisions) + 1
         if task.demo:
@@ -236,6 +264,7 @@ class Orchestrator:
             self._drain_interventions(task)
             return True
         if stage == "review":
+            await self._run_vote(task)
             self._open_gate(task)
             return False
         self._advance_stage(task)

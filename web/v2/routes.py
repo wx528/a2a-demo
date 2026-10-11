@@ -29,6 +29,7 @@ from web.v2.models import (
     STAGE_LABELS,
     AcceptanceItem,
     ActionItem,
+    Ballot,
     Constraint,
     EvidenceItem,
     Material,
@@ -69,6 +70,10 @@ class DemoOrRealBackend:
             await asyncio.sleep(_DEMO_TURN_DELAY)
             return demo.statement(key, task)
         return await self._real.speak(task, author, key)
+
+    async def vote_direction(self, task: V2Task, seat: str) -> Ballot:
+        """委员会独立投票：demo 任务由编排器走 DEMO_BALLOTS 短路，不会进入此方法。"""
+        return await self._real.vote_direction(task, seat)
 
 
 store = V2Store(os.getenv("V2_DB", DEFAULT_DB))

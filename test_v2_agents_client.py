@@ -74,3 +74,39 @@ async def test_fallback_placeholder_raises(monkeypatch):
     be = AgentSpeakerBackend(NullBroadcasterStub())
     with pytest.raises(AgentCallError):
         await be.speak(_task(), "ada", "clarify_ada")
+
+
+def test_vote_direction_parses_after_retry():
+    """首次输出无 JSON、第二次有效：返回有效票（重试 1 次）。"""
+    import asyncio
+    from web.v2.models import Ballot, V2Task
+
+    class B(AgentSpeakerBackend):
+        def __init__(self, outputs):
+            super().__init__(broadcaster=None)
+            self.outputs = list(outputs)
+
+        async def _stream_text(self, task, author, url, prompt):
+            return self.outputs.pop(0)
+
+    task = V2Task(id="t9", goal_text="g", created_at=1.0, updated_at=1.0)
+    b = B(["我觉得还行", '{"verdict": "approve", "confidence": 4, "reason": "ok"}'])
+    ballot = asyncio.run(b.vote_direction(task, "ada"))
+    assert ballot.verdict == "approve"
+    assert ballot == Ballot(verdict="approve", confidence=4, reason="ok")
+
+
+def test_vote_direction_abstains_on_garbage():
+    import asyncio
+    from web.v2.models import V2Task
+
+    class B(AgentSpeakerBackend):
+        def __init__(self):
+            super().__init__(broadcaster=None)
+
+        async def _stream_text(self, task, author, url, prompt):
+            return "还是不行"
+
+    task = V2Task(id="t9", goal_text="g", created_at=1.0, updated_at=1.0)
+    ballot = asyncio.run(B().vote_direction(task, "ada"))
+    assert ballot.verdict == "abstain"

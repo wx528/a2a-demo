@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from web.v2.models import V2Task
+from web.v2.models import Ballot, V2Task
 from web.v2.store import V2Store
 from web.v2.orchestrator import Orchestrator, SpeakerBackend, NullBroadcaster
 
@@ -9,6 +9,10 @@ class EchoBackend(SpeakerBackend):
     async def speak(self, task, author, key):
         await asyncio.sleep(0)
         return (key, f"body:{key}:{task.goal_text}", False)
+
+    async def vote_direction(self, task, seat):
+        # 该文件的用例只关心发言序列与门：按全弃权处理，投票静默跳过
+        return Ballot(verdict="abstain")
 
 
 def _mk(tmp_path, goal="判断团队是否需要引入 A2A"):

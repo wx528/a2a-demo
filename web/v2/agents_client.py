@@ -10,7 +10,7 @@ import os
 
 from shared.a2a_client import A2AJSONRPCClient
 from web.v2.experts import PURPOSE_DUTIES
-from web.v2.models import V2Task
+from web.v2.models import V2Task, Ballot
 from web.v2.orchestrator import AgentCallError, _PURPOSE_BY_KEY
 from web.v2.util import ThinkFilter, _PHASE_LINE, _phase_or_none
 
@@ -116,6 +116,29 @@ class AgentSpeakerBackend:
             except Exception as retry_exc:
                 raise AgentCallError(f"角色 {author} 调用失败：{retry_exc}") from retry_exc
         return self._split_turn_text(text)
+
+    async def vote_direction(self, task: V2Task, seat: str) -> Ballot:
+        """对当前讨论方向独立投票：聚合后解析 JSON，失败重试 1 次，再失败弃权。"""
+        from web.v2 import vote as vote_mod
+
+        expert = task.expert_by_id(seat)
+        url = expert.url if expert else ROLE_AGENTS.get(seat)
+        if not url:
+            return Ballot(verdict="abstain")
+        prompt = (
+            (_identity_line(task, seat, f"review_vote_{seat}") + "\n\n")
+            + vote_mod.build_vote_prompt(task)
+        )
+        text = ""
+        for _ in range(2):
+            try:
+                text = await self._stream_text(task, seat, url, prompt)
+            except Exception:
+                text = ""
+            ballot = vote_mod.parse_ballot(text)
+            if ballot is not None:
+                return ballot
+        return Ballot(verdict="abstain")
 
     def _require_valid_text(self, text: str, author: str) -> None:
         """空响应或角色 Agent 的 fallback 占位文案一律视为失败（§3.1：绝不静默用占位发言）。"""

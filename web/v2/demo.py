@@ -9,6 +9,7 @@ import os
 from web.v2.models import (
     AcceptanceItem,
     ActionItem,
+    Ballot,
     EvidenceItem,
     OutcomeDoc,
     PathOption,
@@ -50,6 +51,9 @@ DEMO_OPTIONS: list[dict] = [
         "uncertain": True,
     },
 ]
+
+# demo 任务的委员会选票（席位→票）；v1 先占位为空：全弃权聚合后 quorum=0，投票静默跳过
+DEMO_BALLOTS: dict[str, Ballot] = {}
 
 SCRIPTS: dict[str, tuple[str, str]] = {
     "clarify_ada": (
