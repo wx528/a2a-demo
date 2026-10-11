@@ -13,6 +13,16 @@ class NullBroadcasterStub:
         pass
 
 
+class CollectingBroadcaster:
+    """收集全部广播事件，供断言「零发布」或「事件序列」。"""
+
+    def __init__(self):
+        self.events = []
+
+    def publish(self, task_id, event, data):
+        self.events.append((task_id, event, data))
+
+
 def test_prompt_sections():
     p = build_turn_prompt(_task(), "ada", "clarify_ada")
     assert "[目标] g" in p and "[约束]" in p and "✓ c1" in p and "研究员" in p
@@ -86,7 +96,7 @@ def test_vote_direction_parses_after_retry():
             super().__init__(broadcaster=None)
             self.outputs = list(outputs)
 
-        async def _stream_text(self, task, author, url, prompt):
+        async def _stream_text(self, task, author, url, prompt, publish=True):
             return self.outputs.pop(0)
 
     task = V2Task(id="t9", goal_text="g", created_at=1.0, updated_at=1.0)
@@ -104,9 +114,51 @@ def test_vote_direction_abstains_on_garbage():
         def __init__(self):
             super().__init__(broadcaster=None)
 
-        async def _stream_text(self, task, author, url, prompt):
+        async def _stream_text(self, task, author, url, prompt, publish=True):
             return "还是不行"
 
     task = V2Task(id="t9", goal_text="g", created_at=1.0, updated_at=1.0)
     ballot = asyncio.run(B().vote_direction(task, "ada"))
     assert ballot.verdict == "abstain"
+
+
+@pytest.mark.asyncio
+async def test_vote_direction_publishes_no_events(monkeypatch):
+    """匿名性回归：投票期间零 turn_delta/turn_start/turn_done 发布，票内容不得流出。"""
+    class JsonStream:
+        def __init__(self, url):
+            pass
+
+        async def stream_deltas(self, text):
+            for piece in ('{"verdict": ', '"approve", "confidence": 4, ', '"reason": "ok"}', ""):
+                yield piece
+
+    monkeypatch.setattr("web.v2.agents_client.A2AJSONRPCClient", JsonStream)
+    bc = CollectingBroadcaster()
+    be = AgentSpeakerBackend(bc)
+    task = V2Task(id="t10", goal_text="g", created_at=1.0, updated_at=1.0)
+    ballot = await be.vote_direction(task, "ada")
+    assert ballot.verdict == "approve"
+    assert bc.events == []  # 不发任何事件：无真实席位的增量、无起止标记
+
+
+@pytest.mark.asyncio
+async def test_speak_still_publishes_deltas(monkeypatch):
+    """对照用例：正常发言路径仍发布 turn_delta（防止把 speak 一并静音）。"""
+
+    class Plain:
+        def __init__(self, url):
+            pass
+
+        async def stream_deltas(self, text):
+            yield "一句足够长的发言标题\n"
+            yield "正文增量继续"
+
+    monkeypatch.setattr("web.v2.agents_client.A2AJSONRPCClient", Plain)
+    bc = CollectingBroadcaster()
+    be = AgentSpeakerBackend(bc)
+    task = V2Task(id="t11", goal_text="g", created_at=1.0, updated_at=1.0)
+    title, body, verified = await be.speak(task, "ada", "clarify_ada")
+    assert title and body
+    deltas = [data for _, event, data in bc.events if event == "turn_delta"]
+    assert len(deltas) >= 2 and deltas[0]["author"] == "ada"

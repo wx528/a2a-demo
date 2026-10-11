@@ -12,6 +12,7 @@ from web.v2 import demo, vote
 from web.v2.experts import DEFAULT_ASSIGNMENTS
 from web.v2.models import (
     STAGES,
+    Ballot,
     Constraint,
     Decision,
     DecisionOption,
@@ -25,6 +26,9 @@ from web.v2.store import V2Store
 class SpeakerBackend(Protocol):
     async def speak(self, task: V2Task, author: str, key: str) -> tuple[str, str, bool]:
         """返回 (title, body, verified)，orchestrator 据此建 Turn。"""
+
+    async def vote_direction(self, task: V2Task, seat: str) -> Ballot:
+        """返回该席位的独立票；实现异常由 _run_vote 兜底为弃权，不阻塞流程。"""
 
 
 class Broadcaster(Protocol):
@@ -185,7 +189,11 @@ class Orchestrator:
             assignments = task.assignments or DEFAULT_ASSIGNMENTS
             ballots_by_seat = {}
             for seat in assignments.values():  # 四个 purpose 的在任席位（快照）
-                ballots_by_seat[seat] = await self.backend.vote_direction(task, seat)
+                try:
+                    ballots_by_seat[seat] = await self.backend.vote_direction(task, seat)
+                except Exception:
+                    # 永不阻塞的最后防线：单个席位调用异常（后端不合规/意外错误）记弃权
+                    ballots_by_seat[seat] = Ballot(verdict="abstain")
         result = vote.aggregate(task, ballots_by_seat)
         if result.quorum == 0:
             return
@@ -194,6 +202,8 @@ class Orchestrator:
             task, "review", "committee", "vote_summary",
             title="委员会投票", body=vote.render_summary(result),
         )
+        # 投票含多次 await：落盘前同步外部写入（pause/end_now），避免整行覆盖回滚
+        self._adopt_persisted(task)
         self._save(task)
         self._publish(task.id, "vote_revealed", {
             "turn_id": turn.id,
@@ -265,6 +275,11 @@ class Orchestrator:
             return True
         if stage == "review":
             await self._run_vote(task)
+            # 投票含 await 窗口：外部可能已 pause/end_now，从库重读状态，
+            # 已结束/暂停的任务不再开新门（避免对已结束任务重开门）。
+            fresh = self.store.get_task(task.id)
+            if fresh is None or fresh.status != "running":
+                return False
             self._open_gate(task)
             return False
         self._advance_stage(task)

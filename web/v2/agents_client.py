@@ -132,7 +132,9 @@ class AgentSpeakerBackend:
         text = ""
         for _ in range(2):
             try:
-                text = await self._stream_text(task, seat, url, prompt)
+                # 匿名性：收齐全部选票并聚合成 vote_summary 之前，
+                # 票内容不得以真实席位署名逐字流出（turn_delta 为发言专用）。
+                text = await self._stream_text(task, seat, url, prompt, publish=False)
             except Exception:
                 text = ""
             ballot = vote_mod.parse_ballot(text)
@@ -145,7 +147,13 @@ class AgentSpeakerBackend:
         if not text.strip() or "暂未能生成发言" in text:
             raise AgentCallError(f"角色 {author} 未产出有效发言")
 
-    async def _stream_text(self, task: V2Task, author: str, url: str, prompt: str) -> str:
+    async def _stream_text(
+        self, task: V2Task, author: str, url: str, prompt: str, publish: bool = True
+    ) -> str:
+        """流式取回文本；publish=False 时只聚合不广播（投票：收齐前零发布）。
+
+        ThinkFilter/[PHASE] 过滤逻辑不受 publish 影响，返回值两路完全一致。
+        """
         client = A2AJSONRPCClient(url)
         think = ThinkFilter()
         parts: list[str] = []
@@ -158,11 +166,13 @@ class AgentSpeakerBackend:
             if not piece:
                 continue
             parts.append(piece)
-            self._publish_delta(task, author, piece)
+            if publish:
+                self._publish_delta(task, author, piece)
         tail = think.final_text()
         if tail:
             parts.append(tail)
-            self._publish_delta(task, author, tail)
+            if publish:
+                self._publish_delta(task, author, tail)
         return _PHASE_LINE.sub("", "".join(parts)).strip()
 
     def _publish_delta(self, task: V2Task, author: str, piece: str) -> None:

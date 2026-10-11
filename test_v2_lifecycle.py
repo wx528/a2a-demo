@@ -36,6 +36,28 @@ class VoteBackend(SlowBackend):
         return self.ballots.get(seat, Ballot(verdict="approve", confidence=3, reason="ok"))
 
 
+class GateVoteBackend(VoteBackend):
+    """vote_direction 阻塞在事件上：制造投票 await 窗口，供注入 pause/end_now。"""
+
+    def __init__(self, ballots=None):
+        super().__init__(ballots or {})
+        self.in_vote = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def vote_direction(self, task, seat):
+        self.in_vote.set()
+        await self.release.wait()
+        return await super().vote_direction(task, seat)
+
+
+_VOTE_BALLOTS = {
+    "ada": Ballot(verdict="approve", confidence=4, reason="a"),
+    "turing": Ballot(verdict="adjust", confidence=3, reason="b"),
+    "linus": Ballot(verdict="reject", confidence=2, reason="c"),
+    "sage": Ballot(verdict="approve", confidence=4, reason="d"),
+}
+
+
 def _mk(tmp_path, backend):
     store = V2Store(str(tmp_path / "db.sqlite"))
     store.init()
@@ -176,3 +198,35 @@ async def test_vote_all_abstain_skips_summary(tmp_path):
     t = store.get_task("t1")
     assert t.status == "waiting_confirmation" and t.committee_vote is None
     assert not [x for x in t.turns if x.kind == "vote_summary"]
+
+
+@pytest.mark.asyncio
+async def test_pause_during_vote_survives(tmp_path):
+    """投票窗口内 pause：落盘不得被回滚为 running，且不开新门。"""
+    backend = GateVoteBackend(_VOTE_BALLOTS)
+    store, orch = _mk(tmp_path, backend)
+    runner = asyncio.create_task(orch.run_task("t1"))
+    await asyncio.wait_for(backend.in_vote.wait(), timeout=5)
+    orch.pause("t1")
+    backend.release.set()
+    await asyncio.wait_for(runner, timeout=5)
+    t = store.get_task("t1")
+    assert t.status == "paused"
+    assert t.decisions == []
+    assert t.committee_vote is not None  # 票已收齐落盘，但流程停在 paused
+
+
+@pytest.mark.asyncio
+async def test_end_now_during_vote_keeps_outcome(tmp_path):
+    """投票窗口内 end_now：终态 completed + outcome 保留，不再开门。"""
+    backend = GateVoteBackend(_VOTE_BALLOTS)
+    store, orch = _mk(tmp_path, backend)
+    runner = asyncio.create_task(orch.run_task("t1"))
+    await asyncio.wait_for(backend.in_vote.wait(), timeout=5)
+    await orch.end_now("t1")
+    backend.release.set()
+    await asyncio.wait_for(runner, timeout=5)
+    t = store.get_task("t1")
+    assert t.status == "completed" and t.outcome is not None
+    assert t.decisions == []
+    assert t.committee_vote is not None
