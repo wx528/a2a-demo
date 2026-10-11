@@ -42,6 +42,7 @@ from web.v2.models import (
 from web.v2.orchestrator import Orchestrator
 from web.v2.store import V2Store
 from web.v2.util import sse_event
+from web.v2.vote import render_summary
 
 reload_urls()
 
@@ -564,6 +565,8 @@ def _export_markdown(task: V2Task) -> str:
         lines += ["", "### 验收条件", ""]
         lines += [f"- {a.title}：{a.detail}" for a in o.acceptance]
         lines.append("")
+    if task.committee_vote is not None:
+        lines += ["", "## 委员会投票", "", render_summary(task.committee_vote)]
     if task.demo:
         lines += ["> 本文包含演示模式生成的确定性内容", ""]
     return "\n".join(lines)

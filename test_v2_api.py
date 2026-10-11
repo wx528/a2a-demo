@@ -71,6 +71,35 @@ def test_full_demo_loop(client):
     assert client.post(f"/api/v2/tasks/{tid}/outcome/confirm").json()["label"] == "team_confirmed"
 
 
+def test_completed_demo_exports_committee_vote(client):
+    """完成后快照携带委员会投票（quorum 4、多数意见），导出文本含投票节与匿名票。"""
+    tid = _create(client).json()["id"]
+    client.post(f"/api/v2/tasks/{tid}/start")
+    import time
+    t = None
+    for _ in range(100):
+        t = client.get(f"/api/v2/tasks/{tid}").json()
+        if t["status"] == "waiting_confirmation":
+            break
+        time.sleep(0.05)
+    assert t["status"] == "waiting_confirmation"
+    did = t["decisions"][0]["id"]
+    client.post(f"/api/v2/tasks/{tid}/decisions/{did}", json={"option_id": "o1"})
+    for _ in range(100):
+        t = client.get(f"/api/v2/tasks/{tid}").json()
+        if t["status"] == "completed":
+            break
+        time.sleep(0.05)
+    assert t["status"] == "completed"
+    vote = t["committee_vote"]
+    assert vote is not None and vote["quorum"] == 4
+    assert vote["split"] == "majority"
+    ex = client.get(f"/api/v2/tasks/{tid}/export")
+    assert ex.status_code == 200
+    # 专节标题（含 "## "）才证明是导出结构里的独立投票节，而非讨论记录里的 vote_summary turn
+    assert "## 委员会投票" in ex.text and "评审 1" in ex.text
+
+
 def test_create_rejects_overlong_inputs(client):
     assert _create(client, goal_text="x" * 301).status_code == 422
     assert _create(client, constraints=["x" * 201]).status_code == 422

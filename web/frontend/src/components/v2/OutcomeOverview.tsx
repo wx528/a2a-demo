@@ -1,5 +1,5 @@
-import { Check, FileCheck2 } from "lucide-react"
-import type { OutcomeT } from "@/lib/v2api"
+import { Check, FileCheck2, Vote } from "lucide-react"
+import type { BallotT, CommitteeVoteT, OutcomeT } from "@/lib/v2api"
 import { cn } from "@/lib/utils"
 
 const FOCUS_RING = "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -14,14 +14,78 @@ const LABEL_CHIPS: Record<string, { text: string; className: string }> = {
   team_confirmed: { text: "团队已确认", className: "bg-success-bg text-success" },
 }
 
+const SPLIT_LABELS: Record<CommitteeVoteT["split"], string> = {
+  unanimous: "全票一致",
+  majority: "多数意见",
+  split: "意见分裂",
+}
+
+const VERDICT_LABELS: Record<BallotT["verdict"], string> = {
+  approve: "赞成",
+  adjust: "调整",
+  reject: "反对",
+  abstain: "弃权",
+}
+
+export function CommitteeVoteCard({ vote }: { vote: CommitteeVoteT }) {
+  const quorum = vote.quorum
+  const tally = vote.tally ?? {}
+  const pct = (key: string) => (quorum > 0 ? Math.round(((tally[key] ?? 0) / quorum) * 100) : 0)
+
+  return (
+    <div className="flex flex-col gap-3 rounded-[14px] border border-border bg-panel p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-bold text-foreground">
+          <Vote className="size-[18px] text-primary" aria-hidden />
+          委员会投票
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="rounded-lg bg-accent px-[9px] py-[3px] text-xs font-medium text-primary">
+            {SPLIT_LABELS[vote.split]}
+          </span>
+          <span className="rounded-md bg-card px-2 py-0.5 text-xs text-muted-foreground">匿名</span>
+        </span>
+      </div>
+      <div
+        className="flex h-2 overflow-hidden rounded-full bg-border"
+        role="img"
+        aria-label={`委员会投票：赞成 ${tally.approve ?? 0}，调整 ${tally.adjust ?? 0}，反对 ${tally.reject ?? 0}`}
+      >
+        <span className="bg-emerald-500" style={{ width: `${pct("approve")}%` }} />
+        <span className="bg-amber-500" style={{ width: `${pct("adjust")}%` }} />
+        <span className="bg-rose-500" style={{ width: `${pct("reject")}%` }} />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span>赞成 {tally.approve ?? 0}</span>
+        <span>调整 {tally.adjust ?? 0}</span>
+        <span>反对 {tally.reject ?? 0}</span>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {(vote.ballots ?? []).map((ballot, index) => (
+          <li
+            key={index}
+            className="rounded-[10px] border border-border bg-card px-3 py-2 text-[13px] leading-[1.7] text-secondary-foreground"
+          >
+            {`评审 ${index + 1}：${VERDICT_LABELS[ballot.verdict] ?? ballot.verdict}${
+              ballot.verdict === "abstain" ? "" : `（信心 ${ballot.confidence}/5）`
+            }${ballot.reason ? `—— ${ballot.reason}` : ""}`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function OutcomeOverview({
   outcome,
+  committeeVote = null,
   confirmedText,
   confirmedSeq,
   confirming,
   onConfirm,
 }: {
   outcome: OutcomeT
+  committeeVote?: CommitteeVoteT | null
   confirmedText: string | null
   confirmedSeq: number | null
   confirming: boolean
@@ -76,6 +140,7 @@ export function OutcomeOverview({
           协作已完成，不代表方案已验证或审批通过
         </span>
       </div>
+      {committeeVote && committeeVote.quorum > 0 ? <CommitteeVoteCard vote={committeeVote} /> : null}
     </section>
   )
 }

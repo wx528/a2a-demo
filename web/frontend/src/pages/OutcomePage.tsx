@@ -441,6 +441,7 @@ export function OutcomePage({ id }: { id: string }) {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-7 p-10">
         <OutcomeOverview
           outcome={outcome}
+          committeeVote={task.committee_vote}
           confirmedText={confirmedConstraint}
           confirmedSeq={confirmedSeq}
           confirming={confirming}
