@@ -5,9 +5,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.5.0] - 2026-10-12
 
 ### Added
+
+- **决策质量评测（Tier 3）**：`evals/quality/decision_eval.py` —— 10 个决策题上对比「单 LLM 直答」与「委员会全流程（4 席 + 独立投票 + 门）」，盲评裁判四维打分（约束遵守/风险覆盖/可执行性/自洽）+ 胜负；报告 JSON+MD 落 `evals/reports/`；离线测试 `test_decision_eval.py`；首次基线：10 题中委员会 4 胜 3 负（7 题可判、3 题裁判 JSON 未解析）
 
 - **委员会独立投票（v1）**：review 末（决策门打开前），全部 4 个席位对「当前讨论方向」匿名独立投票（approve/adjust/reject + 信心 1-5 + 一句理由）；收齐前零发布、逐票明细不落任何持久层，开票合成单个 `vote_summary` turn + `task.committee_vote`；计票条消费于讨论流、决策门旁与成果页/导出；全弃权静默跳过、流程永不因投票阻塞；demo 模式固定脚本票 2:1:1
 

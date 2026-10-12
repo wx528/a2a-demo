@@ -33,6 +33,21 @@ stamps the report `self_judged: true`.
 Reports land in `evals/reports/` (gitignored) as JSON + Markdown.
 CI: GitHub Actions workflow `Eval` (manual dispatch only).
 
+## Tier 3 — Decision Quality Eval (LLM-as-judge, costs money)
+
+```bash
+# requires: LLM_API_KEY in .env + role agents reachable (docker compose up)
+uv run python evals/quality/decision_eval.py --limit 3
+```
+
+10 decision questions; per question the same model answers (a) directly
+(baseline) and (b) through the full V2 committee pipeline (4 seats + independent
+vote + auto-adopted gate → structured outcome). A blind judge (A/B randomly
+assigned) scores four dimensions 1-10 (constraint adherence / risk coverage /
+executability / coherence) and picks a winner. Reports land in `evals/reports/`
+as `decision-*.json/.md`. Offline unit test: `test_decision_eval.py`.
+Judge JSON failures are counted as unparsed, never silent.
+
 ## 中文说明
 
 - 一致性套件：离线免费，对任意 A2A agent 打分（11 项检查），CI 每次 push 自动跑
